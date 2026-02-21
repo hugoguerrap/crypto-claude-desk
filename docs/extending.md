@@ -6,11 +6,11 @@ This guide covers how to add new agents, MCP servers, skills, exchanges, and rou
 
 ## Adding a New Agent
 
-Agents are Markdown files in `.claude/agents/`. To add a new agent:
+Agents are Markdown files in `agents/`. To add a new agent:
 
 ### 1. Create the agent file
 
-Create `.claude/agents/your-agent-name.md` with YAML frontmatter and a system prompt.
+Create `agents/your-agent-name.md` with YAML frontmatter and a system prompt.
 
 ```markdown
 ---
@@ -116,29 +116,25 @@ if __name__ == "__main__":
     mcp.run()
 ```
 
-### 2. Add to .mcp.json.template
+### 2. Add to mcp-servers.plugin.json
 
-Add your server to `.mcp.json.template`:
+Add your server to `mcp-servers.plugin.json`:
 
 ```json
 {
   "mcpServers": {
     "your-server-name": {
-      "command": "{{VENV_PYTHON}}",
-      "args": ["{{PROJECT_DIR}}/mcp-servers/your_server_name.py"],
-      "description": "Brief description of what this server provides"
+      "command": "uv",
+      "args": ["run", "--project", "${CLAUDE_PLUGIN_ROOT}", "python", "${CLAUDE_PLUGIN_ROOT}/mcp-servers/your_server_name.py"],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}"
     }
   }
 }
 ```
 
-### 3. Run setup.sh
+### 3. Add permissions
 
-Run `./setup.sh` to regenerate `.mcp.json` from the template with the correct paths.
-
-### 4. Add permissions
-
-Add the server to `.claude/settings.json` permissions:
+Users should add the server to their `~/.claude/settings.json` permissions:
 
 ```json
 {
@@ -150,41 +146,35 @@ Add the server to `.claude/settings.json` permissions:
 }
 ```
 
-And to `.claude/settings.local.json`:
-
-```json
-{
-  "enabledMcpjsonServers": [
-    "your-server-name"
-  ]
-}
-```
-
 ### 5. Assign to agents
 
 Add the server name to the `mcpServers` list in any agent files that should use it.
 
 ### 6. Install dependencies
 
-If your server requires additional Python packages, install them into the project venv:
+If your server requires additional Python packages, add them to `pyproject.toml`:
 
-```bash
-./venv/bin/pip install your-package
+```toml
+dependencies = [
+    "your-package>=1.0,<2.0",
+]
 ```
+
+The `uv run --project` command will automatically install new dependencies on the next MCP call.
 
 ---
 
 ## Adding a New Skill
 
-Skills are user-invocable slash commands defined in `.claude/skills/`.
+Skills are user-invocable slash commands defined in `skills/`.
 
 ### 1. Create the skill directory and file
 
 ```bash
-mkdir -p .claude/skills/your-skill
+mkdir -p skills/your-skill
 ```
 
-Create `.claude/skills/your-skill/SKILL.md`:
+Create `skills/your-skill/SKILL.md`:
 
 ```markdown
 ---

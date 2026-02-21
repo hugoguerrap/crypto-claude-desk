@@ -16,7 +16,5 @@
     "market-data",
     "agent-teams"
   ],
-  "agents": "./.claude/agents/",
-  "skills": "./.claude/skills/",
   "mcpServers": "./mcp-servers.plugin.json"
 }

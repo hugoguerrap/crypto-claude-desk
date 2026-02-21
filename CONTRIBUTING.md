@@ -66,14 +66,14 @@ Open a GitHub issue labeled `enhancement` with:
 - **No emojis in code.** Emojis are acceptable only in user-facing interpretation strings (e.g., the `interpretation` field in a tool's return value). Do not use them in variable names, comments, docstrings, or log messages.
 - **Dependencies:** Minimize external dependencies. Prefer CCXT + standard library where possible. If you need a new package, document it.
 
-### Agent Files (.claude/agents/)
+### Agent Files (agents/)
 
 - Write clear, specific instructions. Agents perform better with concrete steps than vague guidance.
 - Include a "Parallel Execution" section if the agent should call multiple MCP tools simultaneously.
 - Include an "Output Format" section defining the structure of the agent's report.
 - Always set `disallowedTools` to restrict access following the principle of least privilege.
 
-### Skill Files (.claude/skills/)
+### Skill Files (skills/)
 
 - Keep skill workflows sequential and explicit. Number each step.
 - Reference specific agent names and file paths.
@@ -119,10 +119,10 @@ You can test a new MCP server in isolation before integrating it:
 
 ```bash
 # Run the server directly
-./venv/bin/python mcp-servers/your_server.py
+uv run --project . python mcp-servers/your_server.py
 
 # Or test individual functions in a Python shell
-./venv/bin/python -c "
+uv run --project . python -c "
 from mcp_servers.your_server import your_tool_name
 result = your_tool_name('BTC')
 print(result)
@@ -135,44 +135,44 @@ print(result)
 
 ```
 crypto-trading-desk/
+    .claude-plugin/
+        plugin.json                    # Plugin manifest
+        marketplace.json               # Marketplace definition
+    agents/                            # 6 agent definitions (auto-discovered)
+        market-monitor.md
+        technical-analyst.md
+        news-sentiment.md
+        risk-specialist.md
+        portfolio-manager.md
+        learning-agent.md
+    skills/                            # 4 slash commands (auto-discovered)
+        analyze/SKILL.md
+        quick/SKILL.md
+        portfolio/SKILL.md
+        close-trade/SKILL.md
+    hooks/
+        hooks.json                     # SessionStart hook
+        post-setup.sh                  # Creates data dirs (~10ms)
+    mcp-servers/                       # 6 Python MCP servers (66 tools)
+        crypto_ultra_simple.py
+        crypto_exchange_ccxt_ultra.py
+        crypto_technical_analysis.py
+        crypto_futures_data.py
+        crypto_advanced_indicators.py
+        crypto_market_microstructure.py
+    mcp-servers.plugin.json            # MCP config (uv run + ${CLAUDE_PLUGIN_ROOT})
+    pyproject.toml                     # Python dependencies (for uv)
     CLAUDE.md                          # Coordinator instructions and routing rules
-    CONTRIBUTING.md                    # This file
     README.md                          # Project overview
+    CONTRIBUTING.md                    # This file
     LICENSE                            # MIT license
-    .mcp.json                          # Generated MCP server config (do not edit)
-    .mcp.json.template                 # MCP server config template (edit this)
-    .claude/
-        settings.json                  # Claude Code permissions and env vars
-        settings.local.json            # Local overrides
-        agents/
-            market-monitor.md          # Agent definitions
-            technical-analyst.md
-            news-sentiment.md
-            risk-specialist.md
-            portfolio-manager.md
-            learning-agent.md
-        skills/
-            analyze/SKILL.md           # Skill definitions
-            quick/SKILL.md
-            portfolio/SKILL.md
-            close-trade/SKILL.md
-        agent-memory/                  # Persistent memory for agents
-            portfolio-manager/MEMORY.md
-    mcp-servers/
-        crypto_ultra_simple.py         # crypto-data (CoinGecko)
-        crypto_exchange_ccxt_ultra.py  # crypto-exchange (CCXT multi-exchange)
-        crypto_technical_analysis.py   # crypto-technical (indicators)
-        crypto_futures_data.py         # crypto-futures (perpetuals)
-        crypto_advanced_indicators.py  # crypto-advanced-indicators
-        crypto_market_microstructure.py # crypto-market-microstructure
     data/
-        trades/portfolio.json          # Paper trading portfolio state
+        trades/portfolio.json.example  # Example portfolio
         reports/                       # Agent analysis reports
         logs/                          # Operational logs
     docs/
         architecture.md                # Technical deep-dive
         extending.md                   # How to extend the system
-    venv/                              # Python virtual environment
 ```
 
 ---

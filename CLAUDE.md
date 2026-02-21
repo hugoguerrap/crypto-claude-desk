@@ -133,8 +133,8 @@ Creates Agent Team with 5 teammates and **sequential phase spawning**:
 4. **Persistent memory** — portfolio-manager and learning-agent use `memory: project` to build institutional knowledge across sessions.
 5. **Principle of least privilege** — Each agent has `disallowedTools` to restrict access to only what they need.
 6. **File-based coordination** — Agent Team teammates write to shared report files. Phase 2+ agents read Phase 1 files directly.
-7. **Zero orchestration code** — No Python coordinator, no Agent SDK. Claude Code is the coordinator via CLAUDE.md + .claude/agents/.
-8. **Dual-mode distribution** — Works both as a standalone project (`setup.sh`) and as a Claude Code plugin (`claude plugin install`). Agents, skills, and settings stay in `.claude/` for compatibility with both modes.
+7. **Zero orchestration code** — No Python coordinator, no Agent SDK. Claude Code is the coordinator via CLAUDE.md + agents/.
+8. **Plugin-native distribution** — Distributed as a Claude Code plugin (`claude plugin install`). Agents, skills, hooks, and MCP servers are auto-discovered from standard plugin directories.
 
 ## Output Guidelines
 

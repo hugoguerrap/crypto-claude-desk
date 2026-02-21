@@ -129,7 +129,7 @@ This tiered approach saves approximately 40-60% in token costs compared to runni
 
 ## Agent Configuration
 
-Each agent is defined by a Markdown file in `.claude/agents/` with YAML frontmatter.
+Each agent is defined by a Markdown file in `agents/` with YAML frontmatter.
 
 ### Frontmatter Fields
 
@@ -287,14 +287,14 @@ Source: CCXT orderbook data. Market microstructure analysis.
 
 ## Skills
 
-Skills are user-invocable slash commands defined in `.claude/skills/`. Each skill is a Markdown file with instructions the coordinator follows.
+Skills are user-invocable slash commands defined in `skills/`. Each skill is a Markdown file with instructions the coordinator follows.
 
 | Skill | File | Trigger |
 |---|---|---|
-| `/analyze` | `.claude/skills/analyze/SKILL.md` | Full 5-agent team analysis |
-| `/quick` | `.claude/skills/quick/SKILL.md` | Single-agent market snapshot |
-| `/portfolio` | `.claude/skills/portfolio/SKILL.md` | Portfolio status (read-only) |
-| `/close-trade` | `.claude/skills/close-trade/SKILL.md` | Close trade + post-mortem |
+| `/analyze` | `skills/analyze/SKILL.md` | Full 5-agent team analysis |
+| `/quick` | `skills/quick/SKILL.md` | Single-agent market snapshot |
+| `/portfolio` | `skills/portfolio/SKILL.md` | Portfolio status (read-only) |
+| `/close-trade` | `skills/close-trade/SKILL.md` | Close trade + post-mortem |
 
 ---
 

@@ -194,13 +194,14 @@ Add to your Claude Code settings (`~/.claude/settings.json`) for the best experi
       "mcp__crypto-advanced-indicators",
       "mcp__crypto-market-microstructure",
       "WebSearch",
-      "WebFetch"
+      "WebFetch",
+      "Write"
     ]
   }
 }
 ```
 
-Without these, Claude Code will prompt you to approve each MCP tool on first use, and Agent Teams (needed for `/analyze`) won't be available.
+Without these, Claude Code will prompt you to approve each tool on first use, and Agent Teams (needed for `/analyze`) won't be available. `Write` is required so agents can save their report files to `data/reports/`.
 
 ---
 

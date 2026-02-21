@@ -16,7 +16,3 @@ dependencies = [
 
 [project.urls]
 Repository = "https://github.com/hugoguerrap/crypto-claude-desk"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"

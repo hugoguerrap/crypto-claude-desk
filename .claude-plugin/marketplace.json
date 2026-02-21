@@ -9,7 +9,7 @@
   "plugins": [
     {
       "name": "crypto-trading-desk",
-      "source": ".",
+      "source": "./",
       "description": "6 AI agents, 66 MCP tools, Agent Teams with DAG dependencies. Zero orchestration code.",
       "version": "1.0.0",
       "category": "productivity"

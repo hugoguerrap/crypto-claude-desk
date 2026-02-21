@@ -1,0 +1,22 @@
+[project]
+name = "crypto-trading-desk"
+version = "1.0.0"
+description = "Multi-agent cryptocurrency intelligence system for Claude Code"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "fastmcp>=2.14,<3.0",
+    "ccxt>=4.5,<5.0",
+    "numpy>=2.0,<3.0",
+    "pandas>=2.2,<4.0",
+    "requests>=2.32,<3.0",
+    "feedparser>=6.0,<7.0",
+]
+
+[project.urls]
+Repository = "https://github.com/hugoguerrap/crypto-claude-desk"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

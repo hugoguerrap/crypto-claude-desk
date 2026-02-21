@@ -1,0 +1,38 @@
+{
+  "portfolios": {
+    "spot": {
+      "initial_balance": 10000,
+      "current_balance": 10000,
+      "currency": "USDT"
+    },
+    "futures": {
+      "initial_balance": 10000,
+      "current_balance": 10000,
+      "currency": "USDT"
+    }
+  },
+  "open_trades": [],
+  "defi_positions": [],
+  "closed_trades": [],
+  "stats": {
+    "total_trades": 0,
+    "wins": 0,
+    "losses": 0,
+    "total_pnl": 0,
+    "open_positions": 0,
+    "defi_positions": 0,
+    "total_exposure_usd": 0,
+    "spot_exposure_usd": 0,
+    "futures_exposure_usd": 0,
+    "defi_deployed_usd": 0,
+    "reserve_usd": 20000,
+    "portfolio_total_usd": 20000,
+    "portfolio_allocation": {
+      "active_trades_percent": 0,
+      "defi_yield_percent": 0,
+      "reserve_percent": 100,
+      "spot_holdings_percent": 0
+    }
+  },
+  "reset_history": []
+}

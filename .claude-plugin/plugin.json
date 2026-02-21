@@ -1,0 +1,22 @@
+{
+  "name": "crypto-trading-desk",
+  "version": "1.0.0",
+  "description": "Multi-agent cryptocurrency intelligence system with 6 specialized AI agents, 66 MCP tools, and Agent Team coordination for comprehensive market analysis and paper trading.",
+  "author": {
+    "name": "Crypto Trading Desk Contributors"
+  },
+  "repository": "https://github.com/hugoguerrap/crypto-claude-desk",
+  "license": "MIT",
+  "keywords": [
+    "crypto",
+    "trading",
+    "multi-agent",
+    "mcp",
+    "technical-analysis",
+    "market-data",
+    "agent-teams"
+  ],
+  "agents": "./.claude/agents/",
+  "skills": "./.claude/skills/",
+  "mcpServers": "./mcp-servers.plugin.json"
+}

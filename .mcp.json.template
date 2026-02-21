@@ -1,0 +1,34 @@
+{
+  "mcpServers": {
+    "crypto-data": {
+      "command": "{{VENV_PYTHON}}",
+      "args": ["{{PROJECT_DIR}}/mcp-servers/crypto_ultra_simple.py"],
+      "description": "CORE crypto data - prices, rankings, history, global stats, fear/greed, dominance"
+    },
+    "crypto-exchange": {
+      "command": "{{VENV_PYTHON}}",
+      "args": ["{{PROJECT_DIR}}/mcp-servers/crypto_exchange_ccxt_ultra.py"],
+      "description": "Multi-exchange specialist - OHLCV, orderbooks, volume analysis, liquidity, arbitrage"
+    },
+    "crypto-technical": {
+      "command": "{{VENV_PYTHON}}",
+      "args": ["{{PROJECT_DIR}}/mcp-servers/crypto_technical_analysis.py"],
+      "description": "Technical analysis - RSI, MACD, Bollinger, patterns, signals, backtesting"
+    },
+    "crypto-futures": {
+      "command": "{{VENV_PYTHON}}",
+      "args": ["{{PROJECT_DIR}}/mcp-servers/crypto_futures_data.py"],
+      "description": "Futures data - funding rates, open interest, long/short ratios, liquidation levels"
+    },
+    "crypto-advanced-indicators": {
+      "command": "{{VENV_PYTHON}}",
+      "args": ["{{PROJECT_DIR}}/mcp-servers/crypto_advanced_indicators.py"],
+      "description": "Advanced indicators - OBV, MFI, ADX, Ichimoku, VWAP, Pivot Points, divergences"
+    },
+    "crypto-market-microstructure": {
+      "command": "{{VENV_PYTHON}}",
+      "args": ["{{PROJECT_DIR}}/mcp-servers/crypto_market_microstructure.py"],
+      "description": "Market microstructure - orderbook depth, imbalance, spread/slippage, spoofing detection"
+    }
+  }
+}

@@ -127,6 +127,12 @@ Check your persistent memory for patterns, win rates, and lessons from past deci
 - Too risky or poor R/R
 - Portfolio already overexposed
 
+### Step 5.5: Consult Agent Scorecards
+Read `data/trades/agent-scorecards.json` (if it exists). Use each agent's `confidence_adjustment` to weight their signals:
+- adjustment > 1.0 → agent has been historically accurate, give extra weight
+- adjustment < 1.0 → agent has been less accurate, discount their signal
+- adjustment = 1.0 → no history yet, treat normally
+
 ### Step 6: Execute (if EXECUTE)
 
 1. Read current `data/trades/portfolio.json`

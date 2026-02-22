@@ -83,9 +83,11 @@ Creates Agent Team with 5 teammates and **sequential phase spawning**:
 **IMPORTANT:** Do NOT spawn all 5 agents at once. Spawn Phase 2/3 agents only after confirming previous phase files exist on disk.
 
 ### Special Queries (single subagent)
-- "Close trade X" → portfolio-manager (close) + learning-agent (post-mortem)
+- "Close trade X" → portfolio-manager (close) + learning-agent (post-mortem + prediction validation + scorecard update)
 - "What patterns have we seen?" → learning-agent
+- "Check my predictions" → learning-agent via /validate-predictions
 - "Risk on my position?" → risk-specialist
+- "Create a new MCP/agent/skill" → system-builder via /create
 
 ## Delegation Rules
 
@@ -95,7 +97,9 @@ Creates Agent Team with 5 teammates and **sequential phase spawning**:
 
 **Agent Team only for full analysis.** Quick and standard queries use plain Task tool subagents. Agent Teams add coordination overhead that's only justified for comprehensive analysis with decision-making.
 
-## Agents (6)
+**After every trade close, ALWAYS delegate to learning-agent** for prediction validation and scorecard update. This is how the system learns.
+
+## Agents (7)
 
 | Agent | Role | Model | MCPs | Native Tools |
 |-------|------|-------|------|-------------|
@@ -104,7 +108,8 @@ Creates Agent Team with 5 teammates and **sequential phase spawning**:
 | news-sentiment | News + social sentiment + crowd psychology | sonnet | (none - uses WebSearch/WebFetch) | WebSearch, WebFetch, Read |
 | risk-specialist | Risk, volatility, microstructure, institutional flows | sonnet | technical, microstructure, data, exchange | WebSearch, Read |
 | portfolio-manager | Final decisions + trade execution | opus | data | Read, Grep, Write |
-| learning-agent | Pre-trade patterns + post-mortem analysis | haiku | data | Read, Grep |
+| learning-agent | Predictions, scorecards, patterns, post-mortem | haiku | data | Read, Grep, Write |
+| system-builder | Generate new MCP servers, agents, skills | opus | (none) | Read, Write, Grep, Glob, WebSearch, WebFetch |
 
 ## MCP Servers (6)
 
@@ -119,7 +124,7 @@ Creates Agent Team with 5 teammates and **sequential phase spawning**:
 
 > **Note:** News and sentiment analysis uses WebSearch + WebFetch directly (Claude's native web intelligence) instead of MCP. This provides real-time breaking news, social sentiment from Twitter/Reddit, and semantic understanding superior to RSS-based keyword matching.
 
-## Skills (5)
+## Skills (7)
 
 | Skill | Usage | Description |
 |-------|-------|-------------|
@@ -127,7 +132,9 @@ Creates Agent Team with 5 teammates and **sequential phase spawning**:
 | `/analyze` | `/analyze BTC` | Full Agent Team analysis with decision |
 | `/quick` | `/quick ETH` | Fast single-agent market check |
 | `/portfolio` | `/portfolio` | Portfolio status and open trades |
-| `/close-trade` | `/close-trade trade_001` | Close trade with post-mortem |
+| `/close-trade` | `/close-trade trade_001` | Close trade with post-mortem + learning |
+| `/validate-predictions` | `/validate-predictions` | Review pending predictions against market data |
+| `/create` | `/create a DeFi tracker` | Extend the system with new components |
 
 ## Design Decisions
 
@@ -139,6 +146,16 @@ Creates Agent Team with 5 teammates and **sequential phase spawning**:
 6. **File-based coordination** — Agent Team teammates write to shared report files. Phase 2+ agents read Phase 1 files directly.
 7. **Zero orchestration code** — No Python coordinator, no Agent SDK. Claude Code is the coordinator via CLAUDE.md + agents/.
 8. **Plugin-native distribution** — Distributed as a Claude Code plugin (`claude plugin install`). Agents, skills, hooks, and MCP servers are auto-discovered from standard plugin directories.
+
+## Cognitive Learning System
+
+The system learns from every trade through structured data:
+
+- **`data/trades/predictions.json`** — Every agent prediction is recorded when a trade opens and validated when it closes.
+- **`data/trades/agent-scorecards.json`** — Each agent has an accuracy score and confidence adjustment (0.5 to 1.5). Portfolio-manager uses these to weight signals.
+- **`data/trades/patterns.json`** — Named trading patterns with win rates, conditions, and SEEK/NEUTRAL/AVOID recommendations.
+
+**Learning loop:** Open trade → record predictions → close trade → validate predictions → update scorecards → update patterns → next trade uses adjusted weights.
 
 ## Output Guidelines
 

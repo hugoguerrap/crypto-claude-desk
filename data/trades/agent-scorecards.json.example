@@ -1,0 +1,45 @@
+{
+  "scorecards": {
+    "market-monitor": {
+      "total_signals": 0,
+      "accurate_signals": 0,
+      "accuracy_rate": 0,
+      "confidence_adjustment": 1.0,
+      "streak": 0,
+      "last_updated": null
+    },
+    "technical-analyst": {
+      "total_signals": 0,
+      "accurate_signals": 0,
+      "accuracy_rate": 0,
+      "confidence_adjustment": 1.0,
+      "streak": 0,
+      "last_updated": null
+    },
+    "news-sentiment": {
+      "total_signals": 0,
+      "accurate_signals": 0,
+      "accuracy_rate": 0,
+      "confidence_adjustment": 1.0,
+      "streak": 0,
+      "last_updated": null
+    },
+    "risk-specialist": {
+      "total_signals": 0,
+      "accurate_signals": 0,
+      "accuracy_rate": 0,
+      "confidence_adjustment": 1.0,
+      "streak": 0,
+      "last_updated": null
+    },
+    "portfolio-manager": {
+      "total_signals": 0,
+      "accurate_signals": 0,
+      "accuracy_rate": 0,
+      "confidence_adjustment": 1.0,
+      "streak": 0,
+      "last_updated": null
+    }
+  },
+  "history": []
+}

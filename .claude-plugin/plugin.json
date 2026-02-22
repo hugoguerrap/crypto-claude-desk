@@ -1,7 +1,7 @@
 {
   "name": "crypto-trading-desk",
   "version": "1.0.0",
-  "description": "Multi-agent cryptocurrency intelligence system with 6 specialized AI agents, 65 MCP tools, and Agent Team coordination for comprehensive market analysis and paper trading.",
+  "description": "Multi-agent cryptocurrency intelligence system with 7 specialized AI agents, 65 MCP tools, cognitive learning, and self-evolving capabilities for comprehensive market analysis and paper trading.",
   "author": {
     "name": "Crypto Trading Desk Contributors"
   },

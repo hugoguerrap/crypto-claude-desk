@@ -4,6 +4,26 @@ This guide covers how to add new agents, MCP servers, skills, exchanges, and rou
 
 ---
 
+## Quick Start: Using /create
+
+The fastest way to extend the system is the `/create` skill:
+
+```
+/create an MCP server for on-chain analytics using public blockchain APIs
+/create an agent for macro economic analysis
+/create a skill for multi-coin comparison
+```
+
+The system-builder agent (opus) will:
+1. Research relevant APIs via WebSearch
+2. Read existing components to match patterns
+3. Generate the new component
+4. Tell you what integration steps remain
+
+This is the recommended way to prototype new components. For production-quality additions, review the generated code and refine it using the manual instructions below.
+
+---
+
 ## Adding a New Agent
 
 Agents are Markdown files in `agents/`. To add a new agent:

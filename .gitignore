@@ -24,10 +24,15 @@ Thumbs.db
 
 # Runtime data
 data/trades/portfolio.json
+data/trades/predictions.json
+data/trades/agent-scorecards.json
+data/trades/patterns.json
 data/reports/*
 !data/reports/.gitkeep
 data/logs/*
 !data/logs/.gitkeep
+data/create/*
+!data/create/.gitkeep
 
 # IDE
 .vscode/

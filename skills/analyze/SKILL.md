@@ -46,16 +46,21 @@ Wait for Task 4 to be `completed` before proceeding.
 ### Phase 5: Spawn Phase 3 Agent (portfolio-manager)
 Only spawn AFTER risk-specialist is confirmed complete.
 
-5. **portfolio-manager** (opus): "You are on team analysis-{symbol}. Your task is Task #5. Mark it in_progress. FIRST read ALL files in `data/reports/YYYY-MM-DD-{symbol}/` — these are ALREADY written by previous agents. Read market-data.md, technical-analysis.md, news-sentiment.md (if exists), and risk-assessment.md. Then synthesize all agent findings. Make final EXECUTE/WAIT/REJECT decision with position sizing, entry/SL/TP, and R/R ratio. Write decision to `data/reports/YYYY-MM-DD-{symbol}/decision.md`. Mark Task #5 completed when done."
+5. **portfolio-manager** (opus): "You are on team analysis-{symbol}. Your task is Task #5. Mark it in_progress. FIRST read ALL files in `data/reports/YYYY-MM-DD-{symbol}/` — these are ALREADY written by previous agents. Read market-data.md, technical-analysis.md, news-sentiment.md (if exists), and risk-assessment.md. ALSO read `data/trades/agent-scorecards.json` — use each agent's `confidence_adjustment` score to weight their signals (e.g., if technical-analyst has confidence_adjustment 1.3, give extra weight to their signals; if risk-specialist has 0.7, discount theirs). Then synthesize all agent findings. Make final EXECUTE/WAIT/REJECT decision with position sizing, entry/SL/TP, and R/R ratio. Write decision to `data/reports/YYYY-MM-DD-{symbol}/decision.md`. Mark Task #5 completed when done."
 
 Wait for Task 5 to be `completed`.
 
-### Phase 6: Synthesize & Present
+### Phase 6: Record Predictions (if EXECUTE)
+If the portfolio-manager's decision was EXECUTE and a trade was opened:
+1. Delegate to `learning-agent`: "Record predictions for the latest trade just opened in data/trades/portfolio.json. Read the trade's agent_signals and learning fields. Extract each testable prediction (price direction, support/resistance holds, funding expectations, risk scenarios). Write prediction entries to data/trades/predictions.json following your Mission 3 instructions."
+
+### Phase 7: Synthesize & Present
 1. Read all output files from `data/reports/YYYY-MM-DD-{symbol}/`
 2. Create consolidated report at `data/reports/YYYY-MM-DD-{symbol}/full-report.md`
 3. Present the portfolio-manager's EXECUTE/WAIT/REJECT decision prominently
-4. Shut down ALL teammates with shutdown_request
-5. Clean up with TeamDelete
+4. If predictions were recorded, mention how many predictions are being tracked
+5. Shut down ALL teammates with shutdown_request
+6. Clean up with TeamDelete
 
 ### Output
 Present a consolidated report with:

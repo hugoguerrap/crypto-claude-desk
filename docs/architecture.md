@@ -121,7 +121,7 @@ Each agent runs on the cheapest model that can reliably handle its task.
 |---|---|---|---|
 | Scout | haiku | market-monitor, learning-agent | Data gathering and pattern lookup require speed, not deep reasoning. |
 | Analyst | sonnet | technical-analyst, news-sentiment, risk-specialist | Analysis requires multi-step reasoning and synthesis. |
-| Decision Maker | opus | portfolio-manager | Final trading decisions require the highest judgment quality. |
+| Decision Maker | opus | portfolio-manager, system-builder | Final trading decisions and code generation require the highest judgment quality. |
 
 This tiered approach saves approximately 40-60% in token costs compared to running all agents on sonnet or opus, with no measurable decrease in analysis quality.
 
@@ -161,7 +161,8 @@ Each agent is restricted to only the tools and MCP servers it needs:
 | news-sentiment | (none) | WebSearch, WebFetch, Read, Write | Edit |
 | risk-specialist | technical, microstructure, data, exchange | WebSearch, Read, Write | Edit |
 | portfolio-manager | data | Read, Grep, Write | -- |
-| learning-agent | data | Read, Grep | Edit, Write, Bash, WebSearch, WebFetch |
+| learning-agent | data | Read, Grep, Write | Edit, Bash, WebSearch, WebFetch |
+| system-builder | (none) | Read, Write, Grep, Glob, WebSearch, WebFetch | Edit, Bash |
 
 ### Persistent Memory
 
@@ -294,7 +295,9 @@ Skills are user-invocable slash commands defined in `skills/`. Each skill is a M
 | `/analyze` | `skills/analyze/SKILL.md` | Full 5-agent team analysis |
 | `/quick` | `skills/quick/SKILL.md` | Single-agent market snapshot |
 | `/portfolio` | `skills/portfolio/SKILL.md` | Portfolio status (read-only) |
-| `/close-trade` | `skills/close-trade/SKILL.md` | Close trade + post-mortem |
+| `/close-trade` | `skills/close-trade/SKILL.md` | Close trade + post-mortem + learning |
+| `/validate-predictions` | `skills/validate-predictions/SKILL.md` | Review pending predictions |
+| `/create` | `skills/create/SKILL.md` | Generate new components (MCP, agent, skill) |
 
 ---
 
@@ -316,6 +319,76 @@ Every full analysis ends with one of three decisions:
 - **EXECUTE** -- Multiple strong signals align, R/R > 2:1, not overexposed.
 - **WAIT** -- Signals positive but entry not optimal.
 - **REJECT** -- Conflicting signals, poor R/R, or portfolio overexposed.
+
+---
+
+## Cognitive Learning System
+
+The system implements a continuous learning loop that improves with every trade.
+
+### Data Files
+
+| File | Purpose |
+|---|---|
+| `data/trades/predictions.json` | Every testable prediction recorded at trade open, validated at close |
+| `data/trades/agent-scorecards.json` | Per-agent accuracy tracking with confidence adjustments (0.5 to 1.5) |
+| `data/trades/patterns.json` | Named patterns with win rates and SEEK/NEUTRAL/AVOID recommendations |
+
+### Learning Loop
+
+```
+Trade Opens
+    |
+    v
+learning-agent extracts predictions from agent_signals
+    → writes to predictions.json
+    |
+    v
+Trade Closes
+    |
+    v
+learning-agent validates predictions against actual outcome
+    → updates predictions.json (correct/incorrect)
+    → updates agent-scorecards.json (accuracy, confidence_adjustment)
+    → updates patterns.json (win rate, recommendation)
+    |
+    v
+Next Analysis
+    |
+    v
+portfolio-manager reads agent-scorecards.json
+    → weights each agent's signals by confidence_adjustment
+    → agents with high accuracy get more influence on decisions
+```
+
+### Agent Scorecards
+
+Each agent has a `confidence_adjustment` score:
+- Starts at 1.0 (neutral)
+- +0.05 for each correct prediction (max 1.5)
+- -0.1 for each incorrect prediction (min 0.5)
+- Portfolio-manager uses these to weight signals when making EXECUTE/WAIT/REJECT decisions
+
+### Pattern Library
+
+Patterns are named trading setups with tracked win rates:
+- **SEEK** (win rate > 60%) — actively look for this pattern
+- **NEUTRAL** (win rate 40-60%) — proceed with caution
+- **AVOID** (win rate < 40%) — do not trade this pattern
+
+---
+
+## Self-Evolving Platform (/create)
+
+The `/create` skill enables the system to extend itself:
+
+1. User describes a capability in natural language
+2. system-builder agent (opus) researches APIs via WebSearch/WebFetch
+3. Reads existing components to match patterns exactly
+4. Generates the new component (MCP server, agent, or skill)
+5. Reports integration steps to the user
+
+The system-builder has `disallowedTools: Edit, Bash` — it can only create new files, never modify existing ones or execute commands. This is a safety boundary.
 
 ---
 

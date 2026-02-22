@@ -113,6 +113,16 @@ Before submitting a PR, verify:
 5. **Portfolio operations work (if you changed portfolio-manager):**
    Run `/portfolio` and verify it reads `data/trades/portfolio.json` correctly.
 
+### Prototyping with /create
+
+The fastest way to prototype a new component is with the `/create` skill:
+```
+/create an MCP server for on-chain analytics
+/create an agent for macro economic analysis
+/create a skill for multi-coin comparison
+```
+The system-builder agent will research APIs, read existing patterns, and generate the component for you. Review the output, then integrate it following the steps above.
+
 ### Testing a New MCP Server
 
 You can test a new MCP server in isolation before integrating it:
@@ -138,18 +148,22 @@ crypto-trading-desk/
     .claude-plugin/
         plugin.json                    # Plugin manifest
         marketplace.json               # Marketplace definition
-    agents/                            # 6 agent definitions (auto-discovered)
+    agents/                            # 7 agent definitions (auto-discovered)
         market-monitor.md
         technical-analyst.md
         news-sentiment.md
         risk-specialist.md
         portfolio-manager.md
         learning-agent.md
-    skills/                            # 4 slash commands (auto-discovered)
+        system-builder.md
+    skills/                            # 7 slash commands (auto-discovered)
         analyze/SKILL.md
         quick/SKILL.md
         portfolio/SKILL.md
         close-trade/SKILL.md
+        validate-predictions/SKILL.md
+        create/SKILL.md
+        setup/SKILL.md
     hooks/
         hooks.json                     # SessionStart hook
         post-setup.sh                  # Creates data dirs (~10ms)
@@ -167,9 +181,13 @@ crypto-trading-desk/
     CONTRIBUTING.md                    # This file
     LICENSE                            # MIT license
     data/
-        trades/portfolio.json.example  # Example portfolio
-        reports/                       # Agent analysis reports
-        logs/                          # Operational logs
+        trades/portfolio.json.example           # Example portfolio
+        trades/predictions.json.example         # Prediction tracking template
+        trades/agent-scorecards.json.example    # Agent accuracy scorecards
+        trades/patterns.json.example            # Pattern library template
+        reports/                                # Agent analysis reports
+        logs/                                   # Operational logs
+        create/                                 # /create research artifacts
     docs/
         architecture.md                # Technical deep-dive
         extending.md                   # How to extend the system

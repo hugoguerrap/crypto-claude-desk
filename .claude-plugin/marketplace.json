@@ -12,7 +12,7 @@
     {
       "name": "crypto-trading-desk",
       "source": "./",
-      "description": "6 AI agents, 65 MCP tools, Agent Teams with DAG dependencies. Zero orchestration code.",
+      "description": "7 AI agents, 65 MCP tools, cognitive learning, self-evolving platform. Zero orchestration code.",
       "version": "1.0.0",
       "category": "productivity"
     }

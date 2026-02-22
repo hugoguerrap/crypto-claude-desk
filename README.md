@@ -160,6 +160,26 @@ The `/create` skill lets you extend the system in natural language:
 
 The system-builder agent (opus) researches APIs, reads existing components for patterns, generates the new component, and tells you what integration steps remain. The system grows with your needs.
 
+### Autopilot mode
+
+Claude Code's `-p` flag runs any workflow headless (no interaction needed). Combine it with cron and the system becomes an autonomous analyst:
+
+```bash
+# Morning market briefing at 8am
+0 8 * * * claude -p "/crypto-trading-desk:quick BTC ETH SOL"
+
+# Validate predictions every 4 hours
+0 */4 * * * claude -p "/crypto-trading-desk:validate-predictions"
+
+# Full analysis every Monday at 9am
+0 9 * * 1 claude -p "/crypto-trading-desk:analyze BTC"
+
+# Portfolio check at US market close
+0 16 * * 1-5 claude -p "/crypto-trading-desk:portfolio"
+```
+
+The learning loop becomes fully automatic: analyze, trade, validate predictions, update scorecards, learn, repeat — 24/7 without human intervention.
+
 ---
 
 ## The old way vs. this way

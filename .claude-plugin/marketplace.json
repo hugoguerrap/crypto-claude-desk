@@ -1,16 +1,18 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "hugoguerrap",
-  "version": "1.0.0",
-  "description": "Crypto Claude Desk - Multi-agent cryptocurrency intelligence system for Claude Code",
   "owner": {
     "name": "hugoguerrap"
+  },
+  "metadata": {
+    "description": "Crypto Claude Desk - Multi-agent cryptocurrency intelligence system for Claude Code",
+    "version": "1.0.0"
   },
   "plugins": [
     {
       "name": "crypto-trading-desk",
       "source": "./",
-      "description": "6 AI agents, 66 MCP tools, Agent Teams with DAG dependencies. Zero orchestration code.",
+      "description": "6 AI agents, 65 MCP tools, Agent Teams with DAG dependencies. Zero orchestration code.",
       "version": "1.0.0",
       "category": "productivity"
     }

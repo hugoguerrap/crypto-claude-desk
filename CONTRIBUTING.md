@@ -153,7 +153,7 @@ crypto-trading-desk/
     hooks/
         hooks.json                     # SessionStart hook
         post-setup.sh                  # Creates data dirs (~10ms)
-    mcp-servers/                       # 6 Python MCP servers (66 tools)
+    mcp-servers/                       # 6 Python MCP servers (65 tools)
         crypto_ultra_simple.py
         crypto_exchange_ccxt_ultra.py
         crypto_technical_analysis.py

@@ -67,36 +67,6 @@ def get_crypto_prices(coins: str = "bitcoin,ethereum") -> dict:
         }
 
 @mcp.tool()
-def get_crypto_news() -> dict:
-    """Get latest crypto news from CoinDesk RSS"""
-    try:
-        import feedparser
-
-        feed_url = "https://www.coindesk.com/arc/outboundfeeds/rss/"
-        feed = feedparser.parse(feed_url)
-
-        news = []
-        for entry in feed.entries[:5]:
-            news.append({
-                "title": entry.title,
-                "link": entry.link,
-                "published": getattr(entry, 'published', 'Unknown')
-            })
-
-        return {
-            "news": news,
-            "status": "success"
-        }
-
-    except Exception as e:
-        logger.exception("get_crypto_news failed")
-        return {
-            "error": str(e),
-            "error_type": type(e).__name__,
-            "status": "error"
-        }
-
-@mcp.tool()
 def get_coin_details(coin_id: str = "bitcoin") -> dict:
     """Get detailed information about a specific cryptocurrency"""
     try:

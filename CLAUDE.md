@@ -24,6 +24,9 @@ User Query
 
 ## How to Use
 
+### First-Time Setup
+- `/setup` - **Run once after installing.** Detects environment, installs uv + Python deps, verifies MCP servers work. Cross-platform (macOS, Linux, Windows).
+
 ### Slash Commands
 - `/quick BTC` - Fast market snapshot (1 agent, ~15 sec)
 - `/analyze BTC` - Full analysis with Agent Team (5 agents, ~3-5 min)
@@ -107,7 +110,7 @@ Creates Agent Team with 5 teammates and **sequential phase spawning**:
 
 | Server | Tools | Data Source |
 |--------|-------|-------------|
-| crypto-data | 12 | CoinGecko API (market metadata: fear/greed, dominance, rankings — NOT for live prices) |
+| crypto-data | 11 | CoinGecko API (market metadata: fear/greed, dominance, rankings — NOT for live prices) |
 | crypto-exchange | 16 | CCXT multi-exchange (orderbooks, OHLCV, volume, arbitrage) |
 | crypto-technical | 14 | CCXT + calculated (RSI, MACD, Bollinger, patterns, signals) |
 | crypto-futures | 10 | CCXT futures (funding rates, OI, long/short, liquidations) |
@@ -116,10 +119,11 @@ Creates Agent Team with 5 teammates and **sequential phase spawning**:
 
 > **Note:** News and sentiment analysis uses WebSearch + WebFetch directly (Claude's native web intelligence) instead of MCP. This provides real-time breaking news, social sentiment from Twitter/Reddit, and semantic understanding superior to RSS-based keyword matching.
 
-## Skills (4)
+## Skills (5)
 
 | Skill | Usage | Description |
 |-------|-------|-------------|
+| `/setup` | `/setup` | First-time environment setup (cross-platform) |
 | `/analyze` | `/analyze BTC` | Full Agent Team analysis with decision |
 | `/quick` | `/quick ETH` | Fast single-agent market check |
 | `/portfolio` | `/portfolio` | Portfolio status and open trades |

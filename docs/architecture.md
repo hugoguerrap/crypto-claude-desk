@@ -176,7 +176,7 @@ Two agents use `memory: project` to accumulate knowledge across sessions:
 
 All 6 MCP servers are Python files using FastMCP. They require no API keys -- all data comes from public exchange APIs via CCXT or CoinGecko.
 
-### crypto-data (12 tools)
+### crypto-data (11 tools)
 
 Source: CoinGecko API. Used for market metadata, NOT live prices (CoinGecko can be minutes stale).
 
@@ -184,7 +184,6 @@ Source: CoinGecko API. Used for market metadata, NOT live prices (CoinGecko can 
 |---|---|
 | `get_bitcoin_price` | Current BTC price |
 | `get_crypto_prices` | Prices for multiple coins |
-| `get_crypto_news` | Latest crypto news from CoinDesk RSS |
 | `get_coin_details` | Detailed coin info (market cap, supply, ATH) |
 | `get_market_rankings` | Market cap rankings |
 | `get_price_history` | Historical price data |
@@ -291,6 +290,7 @@ Skills are user-invocable slash commands defined in `skills/`. Each skill is a M
 
 | Skill | File | Trigger |
 |---|---|---|
+| `/setup` | `skills/setup/SKILL.md` | First-time environment setup (cross-platform) |
 | `/analyze` | `skills/analyze/SKILL.md` | Full 5-agent team analysis |
 | `/quick` | `skills/quick/SKILL.md` | Single-agent market snapshot |
 | `/portfolio` | `skills/portfolio/SKILL.md` | Portfolio status (read-only) |

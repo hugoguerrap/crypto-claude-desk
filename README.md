@@ -1,184 +1,167 @@
 # Crypto Trading Desk
 
-**A multi-agent cryptocurrency intelligence system built entirely with Claude Code's native features.**
-
-No orchestration code. No Python coordinator. No Agent SDK. Just Claude Code, 6 specialized agents, 6 MCP servers, and a CLAUDE.md file that turns them into a coordinated trading desk.
+> *I used to spend weeks building multi-agent systems with LangGraph, CrewAI, and AutoGen. Hundreds of lines of Python orchestration code, custom state machines, fragile message passing between agents. Then I realized Claude Code already has everything — subagents, Agent Teams, MCP servers, persistent memory, model routing. I just needed to describe my agents in markdown and give them tools. This plugin is the result: 6 coordinated AI agents, 65 real-time tools, zero lines of orchestration code.*
+>
+> — [Hugo Guerra](https://github.com/hugoguerrap)
 
 ---
 
-## Quick Start
+**Claude Code is not just for writing code.** Its agent system is a general-purpose intelligence platform. You can point it at any domain, give it specialized tools, and let it coordinate expert agents to solve problems that would take a human team hours.
 
-**Prerequisites:** [Claude Code](https://docs.anthropic.com/en/docs/claude-code) and [uv](https://docs.astral.sh/uv/) (`curl -LsSf https://astral.sh/uv/install.sh | sh`)
+This project proves it. One plugin turns Claude Code into a full crypto trading desk — and it's built entirely with markdown files and MCP servers. No framework. No SDK. No middleware.
+
+**It's markdown all the way down.**
+
+---
+
+## Install
 
 ```bash
-# 1. Add the marketplace (one-time)
+# 1. Add the marketplace
 claude plugin marketplace add hugoguerrap/crypto-claude-desk
 
 # 2. Install the plugin
 claude plugin install crypto-trading-desk@hugoguerrap
 
-# 3. Open Claude Code and try it
+# 3. Start Claude Code
 claude
 ```
+
+Then run setup once:
+
+```
+/crypto-trading-desk:setup
+```
+
+Setup detects your OS (macOS, Linux, or Windows), installs [uv](https://docs.astral.sh/uv/) if missing, downloads Python dependencies, verifies all 6 MCP servers work, and reports status. Takes ~30 seconds. You only need to do this once.
+
+### First thing to try
 
 ```
 /crypto-trading-desk:quick BTC
 ```
 
-That's it. Python dependencies install automatically via `uv` the first time an MCP server is called (~30 sec). After that, everything is instant.
-
-For a full 5-agent analysis with a trading decision:
-
-```
-/crypto-trading-desk:analyze ETH
-```
+Live market snapshot in ~15 seconds: price, volume, Fear & Greed, funding rates, whale activity.
 
 ---
 
-## What Is This?
+## What you can do
 
-A paper-trading crypto analysis system where Claude Code acts as the coordinator for a team of AI agents. Each agent has a specific role -- from scanning live market data to running technical analysis to making final trading decisions -- and they communicate through shared report files on disk.
+### Slash commands
 
-The system routes queries by complexity:
+| Command | What it does | Time |
+|---------|-------------|------|
+| `/crypto-trading-desk:setup` | First-time setup (detects OS, installs deps, verifies) | ~30 sec |
+| `/crypto-trading-desk:quick BTC` | Live market snapshot (1 agent) | ~15 sec |
+| `/crypto-trading-desk:analyze ETH` | Full 5-agent analysis with trading decision | ~3-5 min |
+| `/crypto-trading-desk:portfolio` | View balances, open trades, P&L | ~30 sec |
+| `/crypto-trading-desk:close-trade trade_001` | Close a trade + post-mortem analysis | ~1 min |
 
-- **Quick** -- one agent, one answer, under 15 seconds.
-- **Standard** -- 2-3 agents working in parallel, synthesized by the coordinator.
-- **Full Analysis** -- a 5-agent team with DAG dependencies, producing a comprehensive report with an actionable EXECUTE / WAIT / REJECT decision.
+### Natural language
+
+Just ask naturally. The system routes to the right agent(s) based on complexity:
+
+| You say | What happens |
+|---------|-------------|
+| "How's BTC?" | 1 agent (market-monitor) checks price, volume, sentiment |
+| "RSI of ETH?" | 1 agent (technical-analyst) calculates indicators |
+| "What's the news on SOL?" | 1 agent (news-sentiment) scans web + social media |
+| "Analyze LINK" | 3 agents in parallel: market + technical + news |
+| "Should I buy BTC? Full analysis" | 5-agent team with phased execution and final decision |
+| "Check my portfolio" | Portfolio manager reviews positions and P&L |
 
 ---
 
-## Architecture
+## How it works
+
+### The 6 agents
+
+Each agent is a specialist with its own model tier, tools, and instructions:
+
+| Agent | Role | Model | What it uses |
+|-------|------|-------|-------------|
+| **market-monitor** | Live prices, volume, funding rates, whale alerts | Haiku (fast, cheap) | 5 exchanges via CCXT, CoinGecko, web search |
+| **technical-analyst** | RSI, MACD, Bollinger, Ichimoku, patterns, signals | Sonnet | 38 technical indicators |
+| **news-sentiment** | Breaking news, social mood, FUD/FOMO detection | Sonnet | Web search + web fetch (Claude's native NLP) |
+| **risk-specialist** | Volatility, VaR, orderbook depth, spoofing detection | Sonnet | Microstructure analysis, correlation |
+| **portfolio-manager** | Final EXECUTE/WAIT/REJECT decision, paper trading | Opus (smartest) | Reads all reports, manages portfolio state |
+| **learning-agent** | Post-trade analysis, pattern recognition | Haiku | Builds institutional memory over time |
+
+Using Haiku for data scouts and Opus only for final decisions saves ~40-60% on tokens compared to running everything on one model.
+
+### Full analysis flow (`/analyze`)
+
+When you request a full analysis, 5 agents coordinate in phases:
 
 ```
-User Query
-    |
-    v
-[Claude Code - Coordinator]
-    |  Reads CLAUDE.md for routing rules
-    |  Classifies query complexity
-    |
-    +-- QUICK (1 agent) ------------------> market-monitor (haiku)
-    |   "Price of BTC?"                      ~15 seconds
-    |
-    +-- STANDARD (2-3 agents parallel) ---> market-monitor + technical-analyst + news-sentiment
-    |   "Analyze SOL"                        ~30-60 seconds
-    |
-    +-- FULL ANALYSIS (5-agent team) -----> Agent Team with DAG dependencies
-        "/analyze ETH"                       ~3-5 minutes
-        |
-        |   Phase 1 (parallel)
-        |   +-- market-monitor ---------> market-data.md
-        |   +-- technical-analyst ------> technical-analysis.md
-        |   +-- news-sentiment ---------> news-sentiment.md
-        |
-        |   Phase 2 (after Phase 1)
-        |   +-- risk-specialist --------> risk-assessment.md
-        |
-        |   Phase 3 (after Phase 2)
-        |   +-- portfolio-manager ------> decision.md
-        |
-        v
-    Reports saved to data/reports/YYYY-MM-DD-{symbol}/
+Phase 1 (parallel, ~60 sec)
+  market-monitor ---------> market-data.md
+  technical-analyst ------> technical-analysis.md
+  news-sentiment ---------> news-sentiment.md
+         |
+         v (waits for Phase 1)
+Phase 2 (~60 sec)
+  risk-specialist --------> risk-assessment.md
+         |
+         v (waits for Phase 2)
+Phase 3 (~60 sec)
+  portfolio-manager ------> decision.md
+         |
+         v
+  EXECUTE / WAIT / REJECT
+  with entry, SL, TP, position size, R:R ratio
 ```
 
-### Agents
+Each agent writes a report file. The next phase reads those files. No message passing — just files on disk.
 
-| Agent | Model | Role |
+### 65 MCP tools across 6 servers
+
+| Server | Tools | What it provides |
+|--------|-------|-----------------|
+| crypto-data | 11 | Fear & Greed, dominance, rankings, categories (CoinGecko) |
+| crypto-exchange | 16 | Live prices, orderbooks, OHLCV, volume, arbitrage (5 exchanges via CCXT) |
+| crypto-technical | 14 | RSI, MACD, Bollinger, patterns, signals, backtesting |
+| crypto-futures | 10 | Funding rates, open interest, long/short ratios, liquidation levels |
+| crypto-advanced-indicators | 8 | OBV, MFI, ADX, Ichimoku, VWAP, Pivot Points, divergences |
+| crypto-market-microstructure | 6 | Orderbook depth, imbalance, spread, spoofing, market impact |
+
+All powered by public APIs. **No API keys required.**
+
+### Paper trading
+
+The portfolio manager executes trades in a local JSON file (`data/trades/portfolio.json`). No real money. You start with $10,000 spot + $10,000 futures. Every trade has mandatory stop-loss, minimum 2:1 risk/reward, and position limits.
+
+The learning agent runs post-mortems on closed trades, grades each agent's signals, and builds pattern memory across sessions.
+
+---
+
+## The old way vs. this way
+
+| | Traditional multi-agent frameworks | This plugin |
 |---|---|---|
-| market-monitor | haiku | Live prices, volume, Fear & Greed, funding rates, whale alerts, arbitrage |
-| technical-analyst | sonnet | RSI, MACD, Bollinger, Ichimoku, VWAP, patterns, support/resistance, signals |
-| news-sentiment | sonnet | Breaking news, social sentiment, regulatory updates, FUD/FOMO detection |
-| risk-specialist | sonnet | Volatility, VaR, correlation, orderbook depth, spoofing detection, position sizing |
-| portfolio-manager | opus | Final EXECUTE/WAIT/REJECT decision, paper trade execution, portfolio state |
-| learning-agent | haiku | Pre-trade pattern lookup, post-trade analysis, agent accuracy grading |
-
-### MCP Servers
-
-| Server | Tools | Data Source |
-|---|---|---|
-| crypto-data | 12 | CoinGecko API (Fear & Greed, dominance, rankings, categories) |
-| crypto-exchange | 16 | CCXT multi-exchange (Binance, Kraken, Bitfinex, KuCoin, MEXC) |
-| crypto-technical | 14 | CCXT + calculated (RSI, MACD, Bollinger, patterns, backtesting) |
-| crypto-futures | 10 | CCXT futures (funding rates, open interest, long/short, liquidations) |
-| crypto-advanced-indicators | 8 | CCXT (OBV, MFI, ADX, Ichimoku, VWAP, Pivot Points, divergences) |
-| crypto-market-microstructure | 6 | CCXT (orderbook depth, imbalance, spread, spoofing, market impact) |
-
-**Total: 66 MCP tools** across 6 servers, all powered by public APIs with no API keys required.
+| **Orchestration** | Python code (LangGraph, CrewAI, AutoGen) | `CLAUDE.md` — plain English routing rules |
+| **Agent definitions** | Python classes, decorators, schemas | Markdown files with YAML frontmatter |
+| **Tool integration** | Custom wrappers, API clients, SDKs | MCP servers (standard protocol) |
+| **Coordination** | State machines, graphs, message queues | File-based — agents write reports, next phase reads them |
+| **Memory** | Vector databases, custom storage | Built-in `memory: project` (one line in agent config) |
+| **Model routing** | Custom logic per agent | `model: haiku` / `sonnet` / `opus` in frontmatter |
+| **Setup time** | Days to weeks | Hours. Describe agents, build MCP tools, write CLAUDE.md |
+| **Lines of orchestration code** | Hundreds to thousands | **Zero** |
 
 ---
 
-## Available Commands
+## Requirements
 
-When installed as a plugin, commands are namespaced:
-
-| Command | Description | Agents Used |
-|---|---|---|
-| `/crypto-trading-desk:quick BTC` | Fast market snapshot | market-monitor (1 agent) |
-| `/crypto-trading-desk:analyze ETH` | Full analysis with trading decision | All 5 agents (Agent Team) |
-| `/crypto-trading-desk:portfolio` | View balances, open trades, P&L | portfolio-manager |
-| `/crypto-trading-desk:close-trade trade_001` | Close trade with post-mortem | portfolio-manager + learning-agent |
-
-You can also ask in natural language. The coordinator routes by complexity:
-
-- *"How's BTC?"* --> Quick (market-monitor only)
-- *"RSI of ETH?"* --> Standard (technical-analyst only)
-- *"Should I buy SOL?"* --> Full Analysis (5-agent team)
-- *"Check my portfolio"* --> portfolio-manager
-
----
-
-## How It Works
-
-### What happens when you install
-
-1. `claude plugin marketplace add hugoguerrap/crypto-claude-desk` -- adds the marketplace.
-2. `claude plugin install crypto-trading-desk@hugoguerrap` -- clones the repo into `~/.claude/plugins/cache/crypto-trading-desk/`.
-3. First new session: `SessionStart` hook creates `data/` directories and `portfolio.json` (~10ms).
-4. First MCP call: `uv run` detects no virtual environment, creates one, installs Python dependencies from `pyproject.toml` (~30 sec). After this, all MCP calls are instant.
-
-### How dependencies are managed
-
-The 6 MCP servers need Python packages (ccxt, fastmcp, numpy, pandas). The plugin uses `uv run --project ${CLAUDE_PLUGIN_ROOT}` which automatically:
-1. Creates a `.venv/` inside the plugin cache (first time only)
-2. Installs all dependencies from `pyproject.toml`
-3. Runs the MCP server
-
-`${CLAUDE_PLUGIN_ROOT}` is a variable Claude Code expands to the plugin's install directory. No hardcoded paths.
-
-### Plugin structure
-
-```
-crypto-trading-desk/
-├── .claude-plugin/
-│   ├── plugin.json              # Plugin manifest
-│   └── marketplace.json         # Marketplace definition
-├── agents/                      # 6 agent definitions (.md with YAML frontmatter)
-│   ├── market-monitor.md
-│   ├── technical-analyst.md
-│   ├── news-sentiment.md
-│   ├── risk-specialist.md
-│   ├── portfolio-manager.md
-│   └── learning-agent.md
-├── skills/                      # 4 slash commands
-│   ├── analyze/SKILL.md
-│   ├── quick/SKILL.md
-│   ├── portfolio/SKILL.md
-│   └── close-trade/SKILL.md
-├── hooks/
-│   ├── hooks.json               # SessionStart hook
-│   └── post-setup.sh            # Creates data dirs (~10ms)
-├── mcp-servers/                 # 6 Python MCP servers (66 tools)
-├── mcp-servers.plugin.json      # MCP config (uv run + ${CLAUDE_PLUGIN_ROOT})
-├── pyproject.toml               # Python dependencies
-├── CLAUDE.md                    # Routing logic and coordination rules
-└── data/
-    ├── trades/portfolio.json.example
-    └── reports/
-```
+| Requirement | How it's handled |
+|-------------|-----------------|
+| **Claude Code** | [Install guide](https://docs.anthropic.com/en/docs/claude-code) — you need a Claude Pro/Max/Team plan |
+| **Python 3.11+** | Most systems have it. `uv` downloads it automatically if missing |
+| **uv** | `/setup` installs it automatically. Or install manually: `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| **Agent Teams** | Needed for `/analyze`. See recommended settings below |
 
 ### Recommended settings
 
-Add to your Claude Code settings (`~/.claude/settings.json`) for the best experience:
+Add to `~/.claude/settings.json` for the smoothest experience:
 
 ```json
 {
@@ -201,47 +184,111 @@ Add to your Claude Code settings (`~/.claude/settings.json`) for the best experi
 }
 ```
 
-Without these, Claude Code will prompt you to approve each tool on first use, and Agent Teams (needed for `/analyze`) won't be available. `Write` is required so agents can save their report files to `data/reports/`.
+Without this, Claude Code will ask you to approve each tool on first use (which works fine, just slower). Agent Teams is required for the `/analyze` command.
 
 ---
 
-## Design Principles
+## Troubleshooting
 
-1. **Zero orchestration code.** Claude Code is the coordinator. CLAUDE.md contains all routing logic. Agents are markdown files with YAML frontmatter.
+**First step for any issue:** run `/crypto-trading-desk:setup`. It detects problems and fixes them automatically.
 
-2. **Model optimization.** Haiku for data scouts, Sonnet for analysis, Opus for final decisions. ~40-60% token savings vs running everything on a single model tier.
+### MCP servers not starting
 
-3. **File-based coordination.** Agents write report files to `data/reports/`. Phase 2+ agents read Phase 1 files directly from disk. No message passing, no shared state.
+**"spawn uv ENOENT"** — `uv` is installed but Claude Code can't find it. Common when launching from GUI apps (Claude Desktop, VS Code) that don't inherit your terminal's PATH.
 
-4. **Principle of least privilege.** Each agent has `disallowedTools` restricting access to only what it needs.
+Fix:
+```bash
+# Create a symlink so GUI apps can find uv
+sudo ln -sf ~/.local/bin/uv /usr/local/bin/uv
+# Then restart Claude Code
+```
 
-5. **Persistent memory.** The portfolio-manager and learning-agent use `memory: project` to build institutional knowledge across sessions.
+Or just run `/crypto-trading-desk:setup` — it detects this and offers to fix it.
 
----
-
-## Extending the System
-
-See [docs/extending.md](docs/extending.md) for guides on adding agents, MCP servers, skills, and exchanges.
-
-For a deep technical overview, see [docs/architecture.md](docs/architecture.md).
-
-### Local development
+### Dependencies not installing
 
 ```bash
-# Test changes without installing
-claude --plugin-dir /path/to/crypto-trading-desk
+cd ~/.claude/plugins/cache/crypto-trading-desk  # or your local clone
+uv sync
 ```
+
+### Agent Teams not available
+
+```bash
+export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+```
+
+Or add it to your `~/.claude/settings.json` (see recommended settings above).
+
+### Windows users
+
+The plugin works on Windows. Run `/crypto-trading-desk:setup` — it detects Windows and uses PowerShell to install `uv` if needed. If you get PATH issues, ensure `uv` is in your system PATH or install it via `winget install astral-sh.uv`.
+
+---
+
+## Architecture
+
+```
+crypto-trading-desk/
+├── agents/                      # 6 agent definitions (Markdown + YAML frontmatter)
+├── skills/                      # 5 slash commands (setup, quick, analyze, portfolio, close-trade)
+├── hooks/                       # SessionStart: creates data directories
+├── mcp-servers/                 # 6 Python MCP servers (65 tools total)
+├── mcp-servers.plugin.json      # MCP config for plugin distribution
+├── pyproject.toml               # Python dependencies (pinned in uv.lock)
+├── uv.lock                      # Reproducible dependency resolution
+├── .python-version              # Pins Python 3.12
+├── CLAUDE.md                    # Routing logic — Claude Code reads this to coordinate
+└── data/
+    ├── trades/portfolio.json    # Paper trading state
+    └── reports/                 # Analysis reports (one folder per analysis)
+```
+
+**Zero orchestration code.** Claude Code reads `CLAUDE.md` and coordinates everything. The agents are markdown files. The skills are markdown files. The routing logic is markdown.
+
+---
+
+## Build your own
+
+This project is a template. The architecture — agents as markdown, tools as MCP servers, coordination as CLAUDE.md — works for any domain:
+
+- **Security research**: agents for CVE scanning, exploit analysis, patch verification
+- **Competitive intelligence**: agents for pricing, feature tracking, sentiment monitoring
+- **Operations**: agents for log analysis, incident triage, runbook execution
+- **Financial analysis**: agents for fundamentals, technicals, macro, portfolio optimization
+
+To build your own multi-agent system on Claude Code:
+
+1. Define your agents in `agents/` (markdown + YAML frontmatter)
+2. Build your data sources as MCP servers in `mcp-servers/`
+3. Write routing logic in `CLAUDE.md`
+4. Add user commands in `skills/`
+
+See [docs/extending.md](docs/extending.md) for the full guide.
+
+---
+
+## Contributing
+
+This is an open project. Add new agents, MCP servers, skills, or improve existing ones.
+
+- **New MCP server** — add a data source (on-chain analytics, DEX data, social metrics)
+- **New agent** — add a specialist (macro analyst, on-chain detective, DeFi strategist)
+- **New skill** — add a workflow (multi-coin comparison, portfolio rebalancing, alert system)
+- **Improve existing agents** — better prompts, smarter routing, new analysis patterns
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines. PRs welcome.
 
 ---
 
 ## Disclaimer
 
-This is a **paper trading system only**. No real money is at risk. All trades are simulated in `data/trades/portfolio.json`.
-
-This project is for educational and experimental purposes. It is not financial advice.
+This is a **paper trading system** for educational and experimental purposes. No real money is at risk. All trades are simulated. This is not financial advice.
 
 ---
 
 ## License
 
-[MIT License](LICENSE)
+[MIT](LICENSE)
+
+Built by [Hugo Guerra](https://github.com/hugoguerrap)

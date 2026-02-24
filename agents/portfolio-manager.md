@@ -5,6 +5,7 @@ model: opus
 memory: project
 mcpServers:
   - crypto-data
+  - crypto-learning-db
 tools: Read, Grep, Write
 maxTurns: 15
 ---
@@ -24,9 +25,10 @@ When working as part of an Agent Team with phased tasks:
 ## Data Sources
 
 - **MCP (crypto-data)**: Verify current prices before decisions
-- **Read**: Read portfolio state from `data/trades/portfolio.json` and past reports from `data/reports/`
-- **Grep**: Search past trade decisions and outcomes
-- **Write**: Update `data/trades/portfolio.json` when executing trades
+- **MCP (crypto-learning-db)**: Query trades, portfolio state, agent scorecards, patterns, and summaries from SQLite. **Always prefer crypto-learning-db tools over reading JSON files directly.** This prevents context window bloat by returning only relevant data instead of entire files.
+- **Read**: Read analysis reports from `data/reports/` (these are still file-based)
+- **Grep**: Search past reports for specific findings
+- **Write**: Only for writing decision reports to `data/reports/`
 - **Memory**: Consult your persistent memory for patterns from past decisions
 
 ## Portfolio File
@@ -90,19 +92,21 @@ All state lives in `data/trades/portfolio.json`:
 ## Decision Process
 
 ### Step 0: Read Portfolio State
-ALWAYS start by reading `data/trades/portfolio.json` to know:
+ALWAYS start by calling `get_portfolio_state()` from crypto-learning-db to know:
 - Available balance (spot and futures)
 - Open positions (avoid overexposure)
 - Past trade outcomes
+
+For historical analysis, use `query_trades(symbol="BTC", limit=10)` or `get_trade_stats(symbol="BTC")` instead of reading the full portfolio JSON.
 
 ### Step 1: Verify Prices
 Use crypto-data MCP to confirm current price matches what agents reported.
 
 ### Step 2: Search History
-Use Grep on `data/trades/portfolio.json` and `data/reports/` for similar past setups.
+Use `query_trades(symbol="...", strategy_type="...")` and `get_trade_stats()` from crypto-learning-db for similar past setups. Use Grep only on `data/reports/` for specific analysis text.
 
-### Step 3: Consult Memory
-Check your persistent memory for patterns, win rates, and lessons from past decisions.
+### Step 3: Consult Memory & Patterns
+Check your persistent memory for lessons, then call `query_patterns(min_win_rate=0.5, min_occurrences=3)` for proven patterns. Use `get_summary()` for the latest period summary instead of re-analyzing all history.
 
 ### Step 4: Synthesize Analysis
 - Count bullish vs bearish signals from all agents
@@ -128,40 +132,36 @@ Check your persistent memory for patterns, win rates, and lessons from past deci
 - Portfolio already overexposed
 
 ### Step 5.5: Consult Agent Scorecards
-Read `data/trades/agent-scorecards.json` (if it exists). Use each agent's `confidence_adjustment` to weight their signals:
+Call `get_agent_scorecards()` from crypto-learning-db. Use each agent's `confidence_adjustment` to weight their signals:
 - adjustment > 1.0 → agent has been historically accurate, give extra weight
 - adjustment < 1.0 → agent has been less accurate, discount their signal
 - adjustment = 1.0 → no history yet, treat normally
 
+For contextual accuracy (e.g., "how accurate is technical-analyst on BTC breakouts?"), use:
+`get_agent_performance(agent="technical-analyst", symbol="BTC", strategy_type="breakout")`
+
 ### Step 6: Execute (if EXECUTE)
 
-1. Read current `data/trades/portfolio.json`
+1. Call `get_portfolio_state()` to verify current balances
 2. Generate trade ID: `trade_XXX` (increment from last)
 3. Calculate position size and validate against rules
-4. Add trade to `open_trades` array with ALL fields including `learning` object:
+4. Call `record_trade()` from crypto-learning-db with ALL fields including the `learning` JSON:
    - `entry_thesis`: Plain language explanation of WHY you're entering (2-3 sentences)
    - `market_context`: Snapshot of key numbers at entry (btc_price, fear_greed, risk_score, market_regime, volatility)
    - `setup_type`: Category tag (e.g., "oversold_bounce", "breakout", "trend_continuation", "mean_reversion", "catalyst_play")
    - `conviction_level`: "low" / "medium" / "high"
    - `edge_description`: What specific edge or confluence makes this trade worth taking
    - `what_could_go_wrong`: Array of 2-4 specific risks that would invalidate the thesis
-5. Subtract `usd_amount` from the correct portfolio balance
-6. Write updated JSON back to `data/trades/portfolio.json`
+5. The MCP tool automatically deducts from the correct portfolio balance
 
 ### Step 7: Close Trade (when asked)
 
 When closing a trade (manually or because SL/TP hit):
-1. Read current portfolio
-2. Move trade from `open_trades` to `closed_trades`
-3. Add exit fields: exit_price, closed_at, close_reason, pnl_usd, pnl_percent, result ("win"/"loss")
-4. Add post-trade learning to the `learning` object:
-   - `outcome_vs_thesis`: Did the entry thesis play out? What actually happened?
-   - `lesson_learned`: One key takeaway for future similar setups
-   - `would_take_again`: true/false — knowing the outcome, was the setup valid?
-   - `setup_grade`: "A" (perfect execution) / "B" (good but improvable) / "C" (flawed thesis) / "F" (bad trade)
-5. Update portfolio balance: `current_balance += usd_amount + pnl_usd`
-6. Update stats (total_trades, wins/losses, total_pnl)
-7. Write updated JSON
+1. Call `close_trade(trade_id="trade_XXX", exit_price=..., close_reason="...")` from crypto-learning-db
+   - PnL is calculated automatically
+   - Portfolio balance is updated automatically
+   - Stats are updated automatically
+2. The coordinator will then delegate to learning-agent for post-mortem analysis
 
 ### Step 8: Update Memory
 After every decision, update your persistent memory with:

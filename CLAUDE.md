@@ -106,12 +106,12 @@ Creates Agent Team with 5 teammates and **sequential phase spawning**:
 | market-monitor | Fast market data, whale alerts, arbitrage scan | haiku | data, futures, exchange | WebSearch, Read |
 | technical-analyst | Indicators, patterns, signals | sonnet | technical, advanced-indicators, exchange, data | WebSearch, Read |
 | news-sentiment | News + social sentiment + crowd psychology | sonnet | (none - uses WebSearch/WebFetch) | WebSearch, WebFetch, Read |
-| risk-specialist | Risk, volatility, microstructure, institutional flows | sonnet | technical, microstructure, data, exchange | WebSearch, Read |
-| portfolio-manager | Final decisions + trade execution | opus | data | Read, Grep, Write |
-| learning-agent | Predictions, scorecards, patterns, post-mortem | haiku | data | Read, Grep, Write |
+| risk-specialist | Risk, volatility, microstructure, institutional flows | sonnet | technical, microstructure, data, exchange, learning-db | WebSearch, Read |
+| portfolio-manager | Final decisions + trade execution | opus | data, learning-db | Read, Grep, Write |
+| learning-agent | Predictions, scorecards, patterns, post-mortem | haiku | data, learning-db | Read, Grep, Write |
 | system-builder | Generate new MCP servers, agents, skills | opus | (none) | Read, Write, Grep, Glob, WebSearch, WebFetch |
 
-## MCP Servers (6)
+## MCP Servers (7)
 
 | Server | Tools | Data Source |
 |--------|-------|-------------|
@@ -121,6 +121,7 @@ Creates Agent Team with 5 teammates and **sequential phase spawning**:
 | crypto-futures | 10 | CCXT futures (funding rates, OI, long/short, liquidations) |
 | crypto-advanced-indicators | 8 | CCXT (OBV, MFI, ADX, Ichimoku, VWAP, Pivot Points) |
 | crypto-market-microstructure | 6 | CCXT (orderbook depth, imbalance, spoofing, market impact) |
+| crypto-learning-db | 17 | SQLite (trades, predictions, scorecards, patterns, summaries, meta-learning) |
 
 > **Note:** News and sentiment analysis uses WebSearch + WebFetch directly (Claude's native web intelligence) instead of MCP. This provides real-time breaking news, social sentiment from Twitter/Reddit, and semantic understanding superior to RSS-based keyword matching.
 
@@ -146,16 +147,47 @@ Creates Agent Team with 5 teammates and **sequential phase spawning**:
 6. **File-based coordination** — Agent Team teammates write to shared report files. Phase 2+ agents read Phase 1 files directly.
 7. **Zero orchestration code** — No Python coordinator, no Agent SDK. Claude Code is the coordinator via CLAUDE.md + agents/.
 8. **Plugin-native distribution** — Distributed as a Claude Code plugin (`claude plugin install`). Agents, skills, hooks, and MCP servers are auto-discovered from standard plugin directories.
+9. **SQLite cognitive memory** — Trades, predictions, scorecards, and patterns stored in SQLite (`data/db/learning.db`). Agents query only what they need via `crypto-learning-db` MCP, preventing context window overflow. Scales to unlimited trades.
 
 ## Cognitive Learning System
 
-The system learns from every trade through structured data:
+The system learns from every trade through a **SQLite-backed cognitive memory** (`crypto-learning-db` MCP server). This replaces the previous JSON files that caused context window overflow after ~270 trades.
 
-- **`data/trades/predictions.json`** — Every agent prediction is recorded when a trade opens and validated when it closes.
-- **`data/trades/agent-scorecards.json`** — Each agent has an accuracy score and confidence adjustment (0.5 to 1.5). Portfolio-manager uses these to weight signals.
-- **`data/trades/patterns.json`** — Named trading patterns with win rates, conditions, and SEEK/NEUTRAL/AVOID recommendations.
+### Storage: SQLite Database (`data/db/learning.db`)
 
-**Learning loop:** Open trade → record predictions → close trade → validate predictions → update scorecards → update patterns → next trade uses adjusted weights.
+| Table | Purpose |
+|-------|---------|
+| `trades` | All open and closed trades with full metadata |
+| `predictions` | Testable predictions from each agent |
+| `agent_scorecards` | Accuracy rates and confidence adjustments per agent |
+| `scorecard_history` | Full validation event log |
+| `patterns` | Named trading patterns with win rates |
+| `summaries` | Monthly/quarterly performance summaries |
+| `portfolio_state` | Current balances and aggregate stats |
+
+### Why SQLite Instead of JSON
+
+The previous JSON files (portfolio.json, predictions.json, agent-scorecards.json, patterns.json) grew linearly with each trade and were read in full on every operation. After ~270 trades, they exceeded the context window (~200k tokens), causing the system to stop learning and eventually fail.
+
+**SQLite solves this by returning only what agents need:**
+- `query_trades(symbol="BTC", limit=10)` → 10 relevant trades, not all 500
+- `get_agent_performance(agent="technical-analyst", symbol="BTC", strategy_type="breakout")` → contextual accuracy, not global
+- `get_trade_stats(symbol="BTC")` → aggregated numbers, not raw trade list
+- `generate_summary(period="2026-Q1")` → compressed quarterly knowledge
+
+### Three Learning Layers
+
+1. **Operational memory** (SQLite queries): What the agent needs right now for a specific decision
+2. **Strategic memory** (summaries table): Compressed knowledge from past periods, generated via `generate_summary()`
+3. **Meta-learning** (`get_agent_performance()`): "How accurate is this agent in these specific conditions?"
+
+### Migration from JSON
+
+Run `migrate_from_json()` via the crypto-learning-db MCP to import existing JSON data into SQLite. Safe to re-run (idempotent).
+
+### Learning Loop
+
+Open trade → `record_trade()` + `record_prediction()` → close trade → `close_trade()` + `validate_prediction()` → auto-updates scorecards → `upsert_pattern()` → `generate_summary()` periodically → next trade queries only relevant data via filtered queries.
 
 ## Output Guidelines
 

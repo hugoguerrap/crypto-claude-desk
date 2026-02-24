@@ -29,6 +29,11 @@
       "command": "uv",
       "args": ["run", "--frozen", "--project", "${CLAUDE_PLUGIN_ROOT}", "python", "${CLAUDE_PLUGIN_ROOT}/mcp-servers/crypto_market_microstructure.py"],
       "cwd": "${CLAUDE_PLUGIN_ROOT}"
+    },
+    "crypto-learning-db": {
+      "command": "uv",
+      "args": ["run", "--frozen", "--project", "${CLAUDE_PLUGIN_ROOT}", "python", "${CLAUDE_PLUGIN_ROOT}/mcp-servers/crypto_learning_db.py"],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}"
     }
   }
 }

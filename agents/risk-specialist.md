@@ -7,6 +7,7 @@ mcpServers:
   - crypto-market-microstructure
   - crypto-data
   - crypto-exchange
+  - crypto-learning-db
 tools: WebSearch, Read, Write
 disallowedTools: Edit
 maxTurns: 12

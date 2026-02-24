@@ -227,7 +227,7 @@ The variable `$ARGUMENTS` is replaced with whatever the user types after the sla
 A skill is essentially a recipe for the coordinator. It can:
 
 - Delegate to one or more agents via the Task tool.
-- Create an Agent Team for complex multi-agent workflows.
+- Spawn multiple subagents in parallel for complex multi-agent workflows.
 - Read and write files.
 - Combine outputs from multiple agents.
 

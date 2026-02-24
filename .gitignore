@@ -27,6 +27,7 @@ data/trades/portfolio.json
 data/trades/predictions.json
 data/trades/agent-scorecards.json
 data/trades/patterns.json
+data/db/
 data/reports/*
 !data/reports/.gitkeep
 data/logs/*

@@ -1,6 +1,6 @@
 # Crypto Trading Desk
 
-> *I used to spend weeks building multi-agent systems with LangGraph, CrewAI, and AutoGen. Hundreds of lines of Python orchestration code, custom state machines, fragile message passing between agents. Then I realized Claude Code already has everything — subagents, Agent Teams, MCP servers, persistent memory, model routing. I just needed to describe my agents in markdown and give them tools. This plugin is the result: 7 coordinated AI agents, 65 real-time tools, zero lines of orchestration code. It even learns from its own trades and can extend itself.*
+> *I used to spend weeks building multi-agent systems with LangGraph, CrewAI, and AutoGen. Hundreds of lines of Python orchestration code, custom state machines, fragile message passing between agents. Then I realized Claude Code already has everything — subagents, MCP servers, persistent memory, model routing. I just needed to describe my agents in markdown and give them tools. This plugin is the result: 7 coordinated AI agents, 83 real-time tools, zero lines of orchestration code. It even learns from its own trades and can extend itself.*
 >
 > — [Hugo Guerra](https://github.com/hugoguerrap)
 
@@ -16,6 +16,8 @@ This project proves it. One plugin turns Claude Code into a full crypto trading 
 
 ## Install
 
+### Option A: As a plugin (recommended for users)
+
 ```bash
 # 1. Add the marketplace
 claude plugin marketplace add hugoguerrap/crypto-claude-desk
@@ -27,13 +29,26 @@ claude plugin install crypto-trading-desk@hugoguerrap
 claude
 ```
 
+### Option B: From source (recommended for contributors)
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/hugoguerrap/crypto-trading-desk.git
+cd crypto-trading-desk
+
+# 2. Start Claude Code with the plugin directory
+claude --plugin-dir .
+```
+
+Both modes auto-discover agents, skills, and MCP servers. Same code, same behavior.
+
 Then run setup once:
 
 ```
 /crypto-trading-desk:setup
 ```
 
-Setup detects your OS (macOS, Linux, or Windows), installs [uv](https://docs.astral.sh/uv/) if missing, downloads Python dependencies, verifies all 6 MCP servers work, and reports status. Takes ~30 seconds. You only need to do this once.
+Setup detects your OS (macOS, Linux, or Windows), installs [uv](https://docs.astral.sh/uv/) if missing, downloads Python dependencies, verifies all 7 MCP servers work, and reports status. Takes ~30 seconds. You only need to do this once.
 
 ### First thing to try
 
@@ -53,10 +68,11 @@ Live market snapshot in ~15 seconds: price, volume, Fear & Greed, funding rates,
 |---------|-------------|------|
 | `/crypto-trading-desk:setup` | First-time setup (detects OS, installs deps, verifies) | ~30 sec |
 | `/crypto-trading-desk:quick BTC` | Live market snapshot (1 agent) | ~15 sec |
-| `/crypto-trading-desk:analyze ETH` | Full 5-agent analysis with trading decision | ~3-5 min |
+| `/crypto-trading-desk:analyze ETH` | Full 5-agent phased analysis with trading decision | ~3-5 min |
 | `/crypto-trading-desk:portfolio` | View balances, open trades, P&L | ~30 sec |
 | `/crypto-trading-desk:close-trade trade_001` | Close a trade + post-mortem + learning | ~1 min |
 | `/crypto-trading-desk:validate-predictions` | Review predictions against market data | ~30 sec |
+| `/crypto-trading-desk:monitor` | Autonomous loop: check SL/TP, close trades, evaluate, summarize | ~2-3 min |
 | `/crypto-trading-desk:create` | Extend the system with new components | ~2-3 min |
 
 ### Natural language
@@ -89,8 +105,8 @@ Each agent is a specialist with its own model tier, tools, and instructions:
 | **news-sentiment** | Breaking news, social mood, FUD/FOMO detection | Sonnet | Web search + web fetch (Claude's native NLP) |
 | **risk-specialist** | Volatility, VaR, orderbook depth, spoofing detection | Sonnet | Microstructure analysis, correlation |
 | **portfolio-manager** | Final EXECUTE/WAIT/REJECT decision, paper trading | Opus (smartest) | Reads all reports, manages portfolio state |
-| **learning-agent** | Predictions, scorecards, patterns, post-mortem | Haiku | Tracks accuracy, grades agents, builds patterns |
-| **system-builder** | Generate new MCP servers, agents, skills | Opus | Researches APIs, reads existing patterns, generates code |
+| **learning-agent** | Predictions, patterns, post-mortem | Opus | Tracks accuracy, evaluates setups, builds patterns |
+| **system-builder** | Generate new MCP servers, agents, skills + tests | Opus | Researches APIs, reads existing patterns, generates code + tests |
 
 Using Haiku for data scouts and Opus only for final decisions saves ~40-60% on tokens compared to running everything on one model.
 
@@ -119,7 +135,7 @@ Phase 3 (~60 sec)
 
 Each agent writes a report file. The next phase reads those files. No message passing — just files on disk.
 
-### 65 MCP tools across 6 servers
+### 83 MCP tools across 7 servers
 
 | Server | Tools | What it provides |
 |--------|-------|-----------------|
@@ -129,22 +145,24 @@ Each agent writes a report file. The next phase reads those files. No message pa
 | crypto-futures | 10 | Funding rates, open interest, long/short ratios, liquidation levels |
 | crypto-advanced-indicators | 8 | OBV, MFI, ADX, Ichimoku, VWAP, Pivot Points, divergences |
 | crypto-market-microstructure | 6 | Orderbook depth, imbalance, spread, spoofing, market impact |
+| crypto-learning-db | 18 | Trade CRUD, predictions, track records, patterns, summaries, trade modifications (SQLite) |
 
 All powered by public APIs. **No API keys required.**
 
 ### Paper trading
 
-The portfolio manager executes trades in a local JSON file (`data/trades/portfolio.json`). No real money. You start with $10,000 spot + $10,000 futures. Every trade has mandatory stop-loss, minimum 2:1 risk/reward, and position limits.
+The portfolio manager executes trades in a local SQLite database (`data/db/learning.db`) via the crypto-learning-db MCP. No real money. You start with $10,000 spot + $10,000 futures. Every trade has mandatory stop-loss, minimum 2:1 risk/reward, and position limits.
 
 ### Cognitive learning
 
 The system gets smarter with every trade:
 
 1. **Predictions tracked** — When a trade opens, every agent's testable prediction is recorded (price targets, support levels, funding expectations)
-2. **Validated on close** — When the trade closes, predictions are checked against what actually happened
-3. **Agent scorecards** — Each agent gets an accuracy score. Agents that predict well get more influence; agents that miss get less
-4. **Pattern library** — Named trading setups (e.g., "oversold bounce at support") with tracked win rates. Patterns above 60% are marked SEEK; below 40% are marked AVOID
-5. **Weighted decisions** — The portfolio manager reads agent scorecards and weights signals accordingly
+2. **Evaluated in natural language** — When the trade closes, the learning agent reads original predictions vs actual outcomes and writes a detailed NL evaluation: what worked, what failed, why, and what we can learn. No formulas — just reasoning stored for future reference.
+3. **Setup-centric track records** — `get_prediction_track_record()` provides accuracy by time window (7d, 30d, 90d, global) plus NL evaluations, filtered by setup type, symbol, and agent. The portfolio manager asks "how has this type of setup performed?" not "do I trust this agent?"
+4. **Expired prediction detection** — Predictions past their timeframe are automatically surfaced with market context so the learning agent can batch-evaluate them
+5. **Pattern library** — Named trading setups (e.g., "oversold bounce at support") with tracked win rates. Patterns above 60% are marked SEEK; below 40% are marked AVOID
+6. **Claude is the consensus engine** — No weighted formulas, no confidence_adjustment math. The portfolio manager reads setup track records, evaluations, and agent reasoning, then decides through natural language analysis how reliable each signal is for this specific trade
 
 Run `/validate-predictions` anytime to check pending predictions against current market data.
 
@@ -162,23 +180,30 @@ The system-builder agent (opus) researches APIs, reads existing components for p
 
 ### Autopilot mode
 
-Claude Code's `-p` flag runs any workflow headless (no interaction needed). Combine it with cron and the system becomes an autonomous analyst:
+Claude Code's `-p` flag runs headless (no interaction needed). Combine it with cron and the system becomes an autonomous analyst.
+
+**Important:** Cron runs without a terminal, so you need `--allowedTools` to pre-approve tool permissions. You also need the correct working directory so Claude Code finds `CLAUDE.md` and the plugin configuration.
 
 ```bash
-# Morning market briefing at 8am
-0 8 * * * claude -p "/crypto-trading-desk:quick BTC ETH SOL"
+# Use the wrapper script for proper environment setup
+# Monitor every hour: check SL/TP, close trades, evaluate expired predictions
+0 * * * * /path/to/crypto-trading-desk/bin/autopilot.sh monitor
 
-# Validate predictions every 4 hours
-0 */4 * * * claude -p "/crypto-trading-desk:validate-predictions"
+# Morning market briefing at 8am
+0 8 * * * /path/to/crypto-trading-desk/bin/autopilot.sh quick "BTC ETH SOL"
 
 # Full analysis every Monday at 9am
-0 9 * * 1 claude -p "/crypto-trading-desk:analyze BTC"
+0 9 * * 1 /path/to/crypto-trading-desk/bin/autopilot.sh analyze "BTC"
 
 # Portfolio check at US market close
-0 16 * * 1-5 claude -p "/crypto-trading-desk:portfolio"
+0 16 * * 1-5 /path/to/crypto-trading-desk/bin/autopilot.sh portfolio
 ```
 
-The learning loop becomes fully automatic: analyze, trade, validate predictions, update scorecards, learn, repeat — 24/7 without human intervention.
+**Why a wrapper?** Skills (`/skill-name`) are not invoked in `-p` mode. The wrapper maps workflow names to detailed natural language prompts, handles PATH/env for cron, pre-approves tool permissions with `--allowedTools`, auto-detects `--plugin-dir` (works for both plugin install and local clone), and logs output to `data/logs/`.
+
+**Adding custom workflows:** Edit `bin/autopilot.sh` and add a new `case` block. Each workflow is just a natural language prompt — describe what you want Claude to do using the agents and MCP tools available.
+
+The `monitor` workflow closes the autonomous loop: it checks open trades against SL/TP levels, closes trades that hit targets, triggers post-mortem analysis with NL evaluations, validates expired predictions, and generates monthly summaries. Combined with `analyze` for trade entries, the system runs a complete learn-trade-evaluate cycle without human intervention.
 
 ---
 
@@ -204,17 +229,12 @@ The learning loop becomes fully automatic: analyze, trade, validate predictions,
 | **Claude Code** | [Install guide](https://docs.anthropic.com/en/docs/claude-code) — you need a Claude Pro/Max/Team plan |
 | **Python 3.11+** | Most systems have it. `uv` downloads it automatically if missing |
 | **uv** | `/setup` installs it automatically. Or install manually: `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
-| **Agent Teams** | Needed for `/analyze`. See recommended settings below |
-
 ### Recommended settings
 
 Add to `~/.claude/settings.json` for the smoothest experience:
 
 ```json
 {
-  "env": {
-    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
-  },
   "permissions": {
     "allow": [
       "mcp__crypto-data",
@@ -223,6 +243,7 @@ Add to `~/.claude/settings.json` for the smoothest experience:
       "mcp__crypto-futures",
       "mcp__crypto-advanced-indicators",
       "mcp__crypto-market-microstructure",
+      "mcp__crypto-learning-db",
       "WebSearch",
       "WebFetch",
       "Write"
@@ -231,7 +252,7 @@ Add to `~/.claude/settings.json` for the smoothest experience:
 }
 ```
 
-Without this, Claude Code will ask you to approve each tool on first use (which works fine, just slower). Agent Teams is required for the `/analyze` command.
+Without this, Claude Code will ask you to approve each tool on first use (which works fine, just slower).
 
 ---
 
@@ -259,14 +280,6 @@ cd ~/.claude/plugins/cache/crypto-trading-desk  # or your local clone
 uv sync
 ```
 
-### Agent Teams not available
-
-```bash
-export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
-```
-
-Or add it to your `~/.claude/settings.json` (see recommended settings above).
-
 ### Windows users
 
 The plugin works on Windows. Run `/crypto-trading-desk:setup` — it detects Windows and uses PowerShell to install `uv` if needed. If you get PATH issues, ensure `uv` is in your system PATH or install it via `winget install astral-sh.uv`.
@@ -278,19 +291,17 @@ The plugin works on Windows. Run `/crypto-trading-desk:setup` — it detects Win
 ```
 crypto-trading-desk/
 ├── agents/                      # 7 agent definitions (Markdown + YAML frontmatter)
-├── skills/                      # 7 slash commands (setup, quick, analyze, portfolio, close-trade, validate-predictions, create)
+├── bin/                         # autopilot.sh wrapper for cron/headless execution
+├── skills/                      # 8 slash commands (setup, quick, analyze, portfolio, close-trade, validate-predictions, monitor, create)
 ├── hooks/                       # SessionStart: creates data directories
-├── mcp-servers/                 # 6 Python MCP servers (65 tools total)
+├── mcp-servers/                 # 7 Python MCP servers (83 tools total)
 ├── mcp-servers.plugin.json      # MCP config for plugin distribution
 ├── pyproject.toml               # Python dependencies (pinned in uv.lock)
 ├── uv.lock                      # Reproducible dependency resolution
 ├── .python-version              # Pins Python 3.12
 ├── CLAUDE.md                    # Routing logic — Claude Code reads this to coordinate
 └── data/
-    ├── trades/portfolio.json    # Paper trading state
-    ├── trades/predictions.json  # Prediction tracking (cognitive learning)
-    ├── trades/agent-scorecards.json  # Agent accuracy scores
-    ├── trades/patterns.json     # Pattern library with win rates
+    ├── db/learning.db           # SQLite cognitive memory (trades, predictions, patterns)
     ├── reports/                 # Analysis reports (one folder per analysis)
     └── create/                  # /create research artifacts
 ```

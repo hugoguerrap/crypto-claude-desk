@@ -71,6 +71,48 @@ Rules for MCP servers:
 - Import validation from `validators.py` when applicable
 - Write the file to `mcp-servers/{name}.py`
 
+### 4. Tests for MCP Servers (Python)
+
+Every new MCP server MUST have a test file. Before generating:
+1. Read `tests/helpers.py` — understand the `call_tool()` wrapper for FastMCP
+2. Read at least 1 existing test file (e.g., `tests/test_crypto_data.py`) to match the pattern
+
+Pattern to follow:
+```python
+"""Tests for {name}.py MCP server. All external calls are mocked."""
+import sys
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+
+import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "mcp-servers"))
+from helpers import call_tool
+
+# Mock helpers — define realistic mock responses here
+
+# One test class per tool
+class TestToolName:
+    def test_success(self):
+        with _patch_external_call(mock_data):
+            from module_name import tool_name
+            result = call_tool(tool_name, param="value")
+        assert result["status"] == "success"
+
+    def test_error_handling(self):
+        with _patch_external_error():
+            from module_name import tool_name
+            result = call_tool(tool_name, param="value")
+        assert result["status"] == "error"
+```
+
+Rules for tests:
+- Mock ALL external calls (HTTP, CCXT, etc.) — tests must run offline with no network
+- One test class per tool, minimum 2 tests (success + error)
+- Use `call_tool()` from `tests/helpers.py` to invoke FastMCP-decorated functions
+- Assert `status` field on every result
+- Write the test to `tests/test_{name}.py`
+
 ### 2. Agents (Markdown)
 
 Before generating:

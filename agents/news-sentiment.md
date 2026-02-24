@@ -2,6 +2,8 @@
 name: news-sentiment
 description: Crypto news analysis and social sentiment. Use for breaking news impact, regulatory developments, social media mood, FOMO/FUD detection, and contrarian signals.
 model: sonnet
+mcpServers:
+  - crypto-learning-db
 tools: WebSearch, WebFetch, Read, Write
 disallowedTools: Edit
 maxTurns: 20
@@ -17,6 +19,15 @@ All your intelligence comes from live web research — you have no MCP tools:
 - **WebSearch**: Breaking news, Twitter/X trends, Reddit sentiment, regulatory updates, influencer opinions, market-moving events
 - **WebFetch**: Full article analysis for critical stories, sentiment dashboards, detailed regulatory documents
 - **Read**: Report files from other agents and historical data
+
+## Step 0: Check Track Record for This Setup
+Before analyzing, call `get_prediction_track_record(agent="news-sentiment", symbol="...")` from crypto-learning-db.
+Read the accuracy windows AND the recent evaluations. Ask yourself:
+- Have my sentiment reads been accurate recently? Where have I missed?
+- Am I being too reactive to FUD/FOMO? Do evaluations show a pattern of overreaction?
+- For THIS specific symbol, how well have my sentiment calls tracked actual price action?
+
+Use this self-awareness to calibrate your sentiment scores. If evaluations show "correctly identified FUD as overblown 3 times" or "missed a real regulatory catalyst," adjust your current analysis.
 
 ## Execution Strategy
 

@@ -18,7 +18,7 @@ Used for simple data points: a price check, a single indicator, a news summary. 
 | RSI, MACD, indicators, chart patterns | technical-analyst | sonnet |
 | News, sentiment, FUD/FOMO | news-sentiment | sonnet |
 | Portfolio status, trade history | portfolio-manager | opus |
-| Pattern lookup, pre-trade confidence | learning-agent | haiku |
+| Pattern lookup, pre-trade confidence | learning-agent | opus |
 
 **Latency:** ~10-20 seconds.
 
@@ -30,9 +30,9 @@ Typical combination: market-monitor + technical-analyst + news-sentiment.
 
 **Latency:** ~30-60 seconds.
 
-### 3. Full Analysis with Decision (5-agent Agent Team)
+### 3. Full Analysis with Decision (5 subagents in phases)
 
-Used for `/analyze`, "full analysis", "should I buy", or any request asking for a recommendation. This creates an Agent Team with 5 teammates and enforces sequential phase dependencies.
+Used for `/analyze`, "full analysis", "should I buy", or any request asking for a recommendation. The coordinator spawns 5 subagents via the Task tool in 3 sequential phases with file-based coordination.
 
 **Latency:** ~3-5 minutes.
 
@@ -85,8 +85,8 @@ presents EXECUTE / WAIT / REJECT decision to user.
 **Key rules:**
 
 - Phase 2 and Phase 3 agents are NOT spawned until the previous phase is confirmed complete.
-- Completion is verified by checking TaskList status AND confirming report files exist on disk.
-- If news-sentiment has not completed after 5 minutes, the coordinator proceeds without it and notes the gap in the risk-specialist prompt.
+- Completion is verified by confirming report files exist on disk (Task tool blocks until the subagent finishes).
+- If news-sentiment did not produce a file, the coordinator proceeds without it and notes the gap in the risk-specialist prompt.
 - All reports are written to `data/reports/YYYY-MM-DD-{symbol}/`.
 
 ---
@@ -119,9 +119,9 @@ Each agent runs on the cheapest model that can reliably handle its task.
 
 | Tier | Model | Agents | Rationale |
 |---|---|---|---|
-| Scout | haiku | market-monitor, learning-agent | Data gathering and pattern lookup require speed, not deep reasoning. |
+| Scout | haiku | market-monitor | Data gathering requires speed, not deep reasoning. |
 | Analyst | sonnet | technical-analyst, news-sentiment, risk-specialist | Analysis requires multi-step reasoning and synthesis. |
-| Decision Maker | opus | portfolio-manager, system-builder | Final trading decisions and code generation require the highest judgment quality. |
+| Decision Maker | opus | portfolio-manager, learning-agent, system-builder | Final trading decisions, learning evaluations, and code generation require the highest judgment quality. |
 
 This tiered approach saves approximately 40-60% in token costs compared to running all agents on sonnet or opus, with no measurable decrease in analysis quality.
 
@@ -138,17 +138,28 @@ Each agent is defined by a Markdown file in `agents/` with YAML frontmatter.
 name: technical-analyst            # Agent identifier
 description: "..."                 # When to use this agent
 model: sonnet                      # haiku | sonnet | opus
-mcpServers:                        # MCP servers this agent can access
+mcpServers:                        # MCP servers this agent sees in context
   - crypto-technical
   - crypto-advanced-indicators
   - crypto-exchange
   - crypto-data
-tools: WebSearch, Read, Write      # Native Claude Code tools allowed
-disallowedTools: Edit              # Tools explicitly blocked
-maxTurns: 12                       # Maximum conversation turns
-memory: project                    # (optional) Persistent memory scope
+tools: WebSearch, Read, Write      # Native Claude Code tools allowed (enforced)
+disallowedTools: Edit              # Tools explicitly blocked (enforced)
+maxTurns: 12                       # Maximum conversation turns (enforced)
+memory: project                    # (optional) Persistent memory scope (enforced)
 ---
 ```
+
+### What Claude Code Enforces vs Advisory
+
+| Field | Enforced by code? | Notes |
+|---|---|---|
+| `model` | **YES** | Claude Code selects the specified model |
+| `tools` | **YES** | Allowlist — agent cannot use unlisted tools |
+| `disallowedTools` | **YES** | Denylist — tools are removed |
+| `maxTurns` | **YES** | Agent stops after N turns |
+| `memory` | **YES** | Persistent memory scope |
+| `mcpServers` | **Partial** | Controls which MCP tools appear in context, but not a hard security boundary |
 
 ### Principle of Least Privilege
 
@@ -169,7 +180,7 @@ Each agent is restricted to only the tools and MCP servers it needs:
 Two agents use `memory: project` to accumulate knowledge across sessions:
 
 - **portfolio-manager**: Remembers past decisions, win rates, and portfolio rules.
-- **learning-agent**: Builds a pattern library with named setups, historical accuracy, and agent confidence scores.
+- **learning-agent**: Builds a pattern library with named setups, historical accuracy, and setup-centric evaluations.
 
 ---
 
@@ -326,13 +337,18 @@ Every full analysis ends with one of three decisions:
 
 The system implements a continuous learning loop that improves with every trade.
 
-### Data Files
+### Storage: SQLite Database (`data/db/learning.db`)
 
-| File | Purpose |
+All learning data lives in SQLite, accessed via the `crypto-learning-db` MCP server (18 tools).
+
+| Table | Purpose |
 |---|---|
-| `data/trades/predictions.json` | Every testable prediction recorded at trade open, validated at close |
-| `data/trades/agent-scorecards.json` | Per-agent accuracy tracking with confidence adjustments (0.5 to 1.5) |
-| `data/trades/patterns.json` | Named patterns with win rates and SEEK/NEUTRAL/AVOID recommendations |
+| `trades` | All open and closed trades with full metadata |
+| `predictions` | Testable predictions from each agent (with NL evaluations) |
+| `trade_modifications` | SL/TP change history with NL reasons |
+| `patterns` | Named trading patterns with win rates |
+| `summaries` | Monthly/quarterly performance summaries |
+| `portfolio_state` | Current balances and aggregate stats |
 
 ### Learning Loop
 
@@ -341,33 +357,25 @@ Trade Opens
     |
     v
 learning-agent extracts predictions from agent_signals
-    → writes to predictions.json
+    → record_prediction() stores each testable prediction
     |
     v
 Trade Closes
     |
     v
 learning-agent validates predictions against actual outcome
-    → updates predictions.json (correct/incorrect)
-    → updates agent-scorecards.json (accuracy, confidence_adjustment)
-    → updates patterns.json (win rate, recommendation)
+    → validate_prediction(evaluation="...") stores NL analysis
+    → upsert_pattern() updates win rates and recommendations
     |
     v
 Next Analysis
     |
     v
-portfolio-manager reads agent-scorecards.json
-    → weights each agent's signals by confidence_adjustment
-    → agents with high accuracy get more influence on decisions
+portfolio-manager calls get_prediction_track_record(symbol, strategy_type)
+    → "how has this type of setup performed?" (not "do I trust this agent?")
+    → reads accuracy by time window + NL evaluations for context
+    → Claude reasons about setup reliability in natural language
 ```
-
-### Agent Scorecards
-
-Each agent has a `confidence_adjustment` score:
-- Starts at 1.0 (neutral)
-- +0.05 for each correct prediction (max 1.5)
-- -0.1 for each incorrect prediction (min 0.5)
-- Portfolio-manager uses these to weight signals when making EXECUTE/WAIT/REJECT decisions
 
 ### Pattern Library
 

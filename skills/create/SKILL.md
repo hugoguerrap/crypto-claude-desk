@@ -30,6 +30,17 @@ After research completes, delegate to `system-builder` agent:
 - Skill → skills/{name}/SKILL.md
 Write a creation summary to data/create/{name}-summary.md."
 
+### Step 3b: Generate Tests (MCP servers only)
+If the component is an MCP server, delegate to `system-builder` agent:
+"Generate a test file for the new MCP server `mcp-servers/{name}.py`. Read `tests/helpers.py` to understand the `call_tool()` helper. Read at least 2 existing test files (e.g., `tests/test_crypto_data.py`, `tests/test_crypto_exchange.py`) to understand the testing pattern:
+- Import with `sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'mcp-servers'))`
+- Use `from helpers import call_tool` wrapper for FastMCP tools
+- Mock ALL external API calls (HTTP, CCXT, etc.) — tests must run offline
+- One test class per tool, with at least: `test_success` and `test_error_handling`
+- Assert `result['status'] == 'success'` on happy path
+- Assert `result['status'] == 'error'` on failure path
+Write the test to `tests/test_{name}.py`."
+
 ### Step 4: Integration Guidance
 After the component is generated, present:
 
@@ -41,6 +52,7 @@ For **MCP servers**:
 - Add the server configuration to `mcp-servers.plugin.json`
 - Add the server name to relevant agents' `mcpServers` list in their frontmatter
 - Add the server to the MCP table in `CLAUDE.md`
+- Run `uv run --frozen pytest tests/test_{name}.py -v` to verify the tests pass
 - Run `/setup` to verify the new server starts correctly
 
 For **agents**:
@@ -55,5 +67,5 @@ For **skills**:
 Present:
 1. Research findings (APIs, feasibility)
 2. Generated component (file path + key capabilities)
-3. Integration checklist (numbered steps)
-4. Suggested test command to verify it works
+3. Test results (MCP servers: show pytest output)
+4. Integration checklist (numbered steps)

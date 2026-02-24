@@ -1,8 +1,8 @@
 """
 Tests for crypto_learning_db MCP server.
 
-Covers: schema creation, trade CRUD, predictions, scorecards,
-patterns, summaries, migration, and meta-learning queries.
+Covers: schema creation, trade CRUD, predictions, prediction track records,
+patterns, summaries, migration, and trade modifications.
 """
 
 from __future__ import annotations
@@ -44,8 +44,9 @@ class TestSchemaInit(TestCase):
         ]
         conn.close()
         expected = [
-            "agent_scorecards", "patterns", "portfolio_state",
-            "predictions", "scorecard_history", "summaries", "trades",
+            "patterns", "portfolio_state",
+            "predictions", "summaries",
+            "trade_modifications", "trades",
         ]
         self.assertEqual(tables, expected)
 
@@ -58,17 +59,6 @@ class TestSchemaInit(TestCase):
         self.assertEqual(state["spot_balance"], 10000)
         self.assertEqual(state["futures_balance"], 10000)
         self.assertEqual(state["currency"], "USDT")
-
-    def test_default_agent_scorecards(self):
-        conn = db._init_db()
-        rows = conn.execute("SELECT agent FROM agent_scorecards ORDER BY agent").fetchall()
-        conn.close()
-        agents = [r[0] for r in rows]
-        self.assertIn("market-monitor", agents)
-        self.assertIn("technical-analyst", agents)
-        self.assertIn("news-sentiment", agents)
-        self.assertIn("risk-specialist", agents)
-        self.assertIn("portfolio-manager", agents)
 
     def test_idempotent_init(self):
         """Running _init_db twice should not fail or duplicate data."""
@@ -318,10 +308,11 @@ class TestPredictions(TestCase):
             actual_outcome="BTC reached $101k",
             is_correct=True,
             error_margin=1.0,
+            evaluation="Nailed it. BTC broke $100k as predicted.",
         )
         self.assertEqual(result["status"], "success")
         self.assertEqual(result["result"], "correct")
-        self.assertGreater(result["new_confidence_adjustment"], 1.0)
+        self.assertEqual(result["agent"], "technical-analyst")
 
     def test_validate_prediction_incorrect(self):
         db._record_prediction(
@@ -334,9 +325,25 @@ class TestPredictions(TestCase):
             prediction_id="pred_001",
             actual_outcome="BTC dropped to $94k",
             is_correct=False,
+            evaluation="Completely wrong direction. Market sold off on regulatory news.",
         )
         self.assertEqual(result["result"], "incorrect")
-        self.assertLess(result["new_confidence_adjustment"], 1.0)
+        self.assertEqual(result["agent"], "technical-analyst")
+
+    def test_validate_prediction_stores_evaluation(self):
+        db._record_prediction(
+            prediction_id="pred_001", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="price_direction",
+            prediction="BTC will break $100k",
+        )
+        eval_text = "Near miss — BTC hit $99.8k. Direction was right."
+        db._validate_prediction(
+            "pred_001", "BTC reached $99.8k", is_correct=False,
+            error_margin=0.2, evaluation=eval_text,
+        )
+        preds = db._query_predictions(trade_id="trade_001")
+        self.assertEqual(preds["predictions"][0]["evaluation"], eval_text)
 
     def test_validate_nonexistent_prediction(self):
         result = db._validate_prediction(
@@ -345,120 +352,6 @@ class TestPredictions(TestCase):
             is_correct=True,
         )
         self.assertEqual(result["status"], "error")
-
-
-class TestScorecardsAndMetaLearning(TestCase):
-    """Test scorecard updates and meta-learning queries."""
-
-    def setUp(self):
-        if db.DB_PATH.exists():
-            db.DB_PATH.unlink()
-        # Setup: a trade with predictions
-        db._record_trade(
-            trade_id="trade_001", symbol="BTC/USDT", side="long",
-            portfolio_type="futures", entry_price=97000, usd_amount=1000,
-            strategy_type="swing",
-        )
-
-    def test_get_agent_scorecards_initial(self):
-        result = db._get_agent_scorecards()
-        self.assertEqual(result["status"], "success")
-        self.assertEqual(len(result["scorecards"]), 5)
-        for sc in result["scorecards"]:
-            self.assertEqual(sc["confidence_adjustment"], 1.0)
-
-    def test_scorecard_updates_on_validation(self):
-        db._record_prediction(
-            prediction_id="pred_001", trade_id="trade_001",
-            symbol="BTC/USDT", agent="technical-analyst",
-            prediction_type="price_direction",
-            prediction="BTC up",
-        )
-        db._validate_prediction("pred_001", "BTC went up", is_correct=True)
-        result = db._get_agent_scorecards()
-        ta = next(s for s in result["scorecards"] if s["agent"] == "technical-analyst")
-        self.assertEqual(ta["total_signals"], 1)
-        self.assertEqual(ta["accurate_signals"], 1)
-        self.assertEqual(ta["accuracy_rate"], 1.0)
-        self.assertEqual(ta["confidence_adjustment"], 1.05)
-        self.assertEqual(ta["streak"], 1)
-
-    def test_scorecard_streak_resets_on_miss(self):
-        db._record_prediction(
-            prediction_id="pred_001", trade_id="trade_001",
-            symbol="BTC/USDT", agent="technical-analyst",
-            prediction_type="price_direction", prediction="up",
-        )
-        db._record_prediction(
-            prediction_id="pred_002", trade_id="trade_001",
-            symbol="BTC/USDT", agent="technical-analyst",
-            prediction_type="support", prediction="holds $96k",
-        )
-        db._validate_prediction("pred_001", "went up", is_correct=True)
-        db._validate_prediction("pred_002", "broke $96k", is_correct=False)
-        result = db._get_agent_scorecards()
-        ta = next(s for s in result["scorecards"] if s["agent"] == "technical-analyst")
-        self.assertEqual(ta["streak"], -1)
-        self.assertEqual(ta["total_signals"], 2)
-        self.assertEqual(ta["accurate_signals"], 1)
-
-    def test_confidence_adjustment_bounds(self):
-        """Confidence should stay within 0.5-1.5 bounds."""
-        # 10 consecutive misses
-        for i in range(10):
-            db._record_prediction(
-                prediction_id=f"pred_{i:03d}", trade_id="trade_001",
-                symbol="BTC/USDT", agent="technical-analyst",
-                prediction_type="test", prediction="wrong",
-            )
-            db._validate_prediction(f"pred_{i:03d}", "actual", is_correct=False)
-
-        result = db._get_agent_scorecards()
-        ta = next(s for s in result["scorecards"] if s["agent"] == "technical-analyst")
-        self.assertGreaterEqual(ta["confidence_adjustment"], 0.5)
-
-        # Reset and do 20 consecutive hits
-        if db.DB_PATH.exists():
-            db.DB_PATH.unlink()
-        db._record_trade(
-            trade_id="trade_001", symbol="BTC/USDT", side="long",
-            portfolio_type="futures", entry_price=97000, usd_amount=1000,
-        )
-        for i in range(20):
-            db._record_prediction(
-                prediction_id=f"pred_{i:03d}", trade_id="trade_001",
-                symbol="BTC/USDT", agent="technical-analyst",
-                prediction_type="test", prediction="right",
-            )
-            db._validate_prediction(f"pred_{i:03d}", "actual", is_correct=True)
-
-        result = db._get_agent_scorecards()
-        ta = next(s for s in result["scorecards"] if s["agent"] == "technical-analyst")
-        self.assertLessEqual(ta["confidence_adjustment"], 1.5)
-
-    def test_get_agent_performance_contextual(self):
-        """Test meta-learning: accuracy filtered by symbol and strategy."""
-        db._record_prediction(
-            prediction_id="pred_001", trade_id="trade_001",
-            symbol="BTC/USDT", agent="technical-analyst",
-            prediction_type="price_direction", prediction="up",
-        )
-        db._validate_prediction("pred_001", "went up", is_correct=True)
-
-        # Query for BTC + swing (should find 1)
-        result = db._get_agent_performance(
-            agent="technical-analyst", symbol="BTC/USDT", strategy_type="swing"
-        )
-        self.assertEqual(result["status"], "success")
-        self.assertEqual(result["total_predictions"], 1)
-        self.assertEqual(result["contextual_accuracy"], 1.0)
-
-        # Query for ETH (should find 0)
-        result = db._get_agent_performance(
-            agent="technical-analyst", symbol="ETH/USDT"
-        )
-        self.assertEqual(result["total_predictions"], 0)
-        self.assertEqual(result["contextual_accuracy"], 0)
 
 
 class TestPatterns(TestCase):
@@ -679,27 +572,6 @@ class TestMigration(TestCase):
             ],
             "stats": {"total": 1, "correct": 0, "incorrect": 0, "pending": 1},
         }
-        scorecards = {
-            "scorecards": {
-                "market-monitor": {
-                    "total_signals": 5, "accurate_signals": 3,
-                    "accuracy_rate": 0.6, "confidence_adjustment": 1.1,
-                    "streak": 2, "last_updated": "2026-02-15T10:00:00Z",
-                },
-                "technical-analyst": {
-                    "total_signals": 0, "accurate_signals": 0,
-                    "accuracy_rate": 0, "confidence_adjustment": 1.0,
-                    "streak": 0, "last_updated": None,
-                },
-            },
-            "history": [
-                {
-                    "timestamp": "2026-02-15T10:00:00Z", "trade_id": "trade_000",
-                    "agent": "market-monitor", "prediction_correct": True,
-                    "new_accuracy": 0.6, "new_confidence_adjustment": 1.1,
-                },
-            ],
-        }
         patterns = {
             "patterns": [
                 {
@@ -715,7 +587,6 @@ class TestMigration(TestCase):
 
         Path(self.json_dir, "portfolio.json").write_text(json.dumps(portfolio))
         Path(self.json_dir, "predictions.json").write_text(json.dumps(predictions))
-        Path(self.json_dir, "agent-scorecards.json").write_text(json.dumps(scorecards))
         Path(self.json_dir, "patterns.json").write_text(json.dumps(patterns))
 
         result = db._migrate_from_json(self.json_dir)
@@ -734,11 +605,6 @@ class TestMigration(TestCase):
 
         preds = db._query_predictions(status="pending")
         self.assertEqual(len(preds["predictions"]), 1)
-
-        sc = db._get_agent_scorecards()
-        mm = next(s for s in sc["scorecards"] if s["agent"] == "market-monitor")
-        self.assertEqual(mm["total_signals"], 5)
-        self.assertEqual(mm["confidence_adjustment"], 1.1)
 
         pats = db._query_patterns()
         self.assertEqual(len(pats["patterns"]), 1)
@@ -853,6 +719,494 @@ class TestContextWindowScaling(TestCase):
         self.assertIn("win_rate", result["stats"])
         self.assertIn("avg_pnl_pct", result["stats"])
         self.assertEqual(result["stats"]["total"], 200)
+
+
+class TestEvaluationDrivenValidation(TestCase):
+    """Test NL evaluation storage — no formula scoring."""
+
+    def setUp(self):
+        if db.DB_PATH.exists():
+            db.DB_PATH.unlink()
+        db._record_trade(
+            trade_id="trade_001", symbol="BTC/USDT", side="long",
+            portfolio_type="futures", entry_price=97000, usd_amount=1000,
+            strategy_type="swing",
+        )
+
+    def test_evaluation_stored_in_prediction(self):
+        db._record_prediction(
+            prediction_id="pred_001", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+        )
+        eval_text = "Direction correct. BTC rose 3% as predicted. RSI analysis was spot-on."
+        db._validate_prediction(
+            "pred_001", "BTC rose 3%", is_correct=True,
+            evaluation=eval_text,
+        )
+        preds = db._query_predictions(trade_id="trade_001")
+        self.assertEqual(preds["predictions"][0]["evaluation"], eval_text)
+
+    def test_evaluation_empty_is_ok(self):
+        """Evaluation is optional — backward compatible."""
+        db._record_prediction(
+            prediction_id="pred_001", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+        )
+        result = db._validate_prediction("pred_001", "went up", is_correct=True)
+        self.assertEqual(result["status"], "success")
+
+    def test_no_confidence_adjustment_in_result(self):
+        """Result should NOT contain confidence_adjustment, credit, or new_accuracy."""
+        db._record_prediction(
+            prediction_id="pred_001", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+        )
+        result = db._validate_prediction("pred_001", "went up", is_correct=True)
+        self.assertNotIn("confidence_adjustment", result)
+        self.assertNotIn("credit", result)
+        self.assertNotIn("new_accuracy", result)
+
+    def test_validate_returns_agent(self):
+        """Validate should return the agent name for reference."""
+        db._record_prediction(
+            prediction_id="pred_001", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+        )
+        result = db._validate_prediction("pred_001", "went up", is_correct=True)
+        self.assertEqual(result["agent"], "technical-analyst")
+
+    def test_double_validate_rejected(self):
+        """Cannot validate the same prediction twice."""
+        db._record_prediction(
+            prediction_id="pred_001", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+        )
+        db._validate_prediction("pred_001", "went up", is_correct=True)
+        result = db._validate_prediction("pred_001", "went up again", is_correct=False)
+        self.assertEqual(result["status"], "error")
+
+
+class TestPredictionTrackRecord(TestCase):
+    """Test prediction-centric track record queries."""
+
+    def setUp(self):
+        if db.DB_PATH.exists():
+            db.DB_PATH.unlink()
+        # Create trades with different strategies
+        db._record_trade(
+            trade_id="trade_001", symbol="BTC/USDT", side="long",
+            portfolio_type="futures", entry_price=97000, usd_amount=1000,
+            strategy_type="swing",
+        )
+        db._record_trade(
+            trade_id="trade_002", symbol="ETH/USDT", side="long",
+            portfolio_type="spot", entry_price=3000, usd_amount=500,
+            strategy_type="scalp",
+        )
+
+    def test_empty_track_record(self):
+        result = db._get_prediction_track_record(agent="technical-analyst")
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["windows"]["global"]["total"], 0)
+        self.assertIsNone(result["windows"]["global"]["accuracy"])
+
+    def test_track_record_with_data(self):
+        for i in range(5):
+            db._record_prediction(
+                prediction_id=f"pred_{i:03d}", trade_id="trade_001",
+                symbol="BTC/USDT", agent="technical-analyst",
+                prediction_type="price_direction", prediction=f"pred {i}",
+            )
+            db._validate_prediction(
+                f"pred_{i:03d}", "actual", is_correct=(i < 3)  # 3 correct, 2 wrong
+            )
+        result = db._get_prediction_track_record(agent="technical-analyst")
+        self.assertEqual(result["windows"]["global"]["total"], 5)
+        self.assertEqual(result["windows"]["global"]["correct"], 3)
+        self.assertAlmostEqual(result["windows"]["global"]["accuracy"], 0.6, places=2)
+
+    def test_filter_by_symbol(self):
+        db._record_prediction(
+            prediction_id="pred_btc", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+        )
+        db._record_prediction(
+            prediction_id="pred_eth", trade_id="trade_002",
+            symbol="ETH/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+        )
+        db._validate_prediction("pred_btc", "went up", is_correct=True)
+        db._validate_prediction("pred_eth", "went down", is_correct=False)
+
+        btc_result = db._get_prediction_track_record(symbol="BTC/USDT")
+        self.assertEqual(btc_result["windows"]["global"]["total"], 1)
+        self.assertEqual(btc_result["windows"]["global"]["correct"], 1)
+        self.assertEqual(btc_result["filters"]["symbol"], "BTC/USDT")
+
+        eth_result = db._get_prediction_track_record(symbol="ETH/USDT")
+        self.assertEqual(eth_result["windows"]["global"]["total"], 1)
+        self.assertEqual(eth_result["windows"]["global"]["correct"], 0)
+
+    def test_filter_by_strategy_type(self):
+        db._record_prediction(
+            prediction_id="pred_swing", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+        )
+        db._record_prediction(
+            prediction_id="pred_scalp", trade_id="trade_002",
+            symbol="ETH/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+        )
+        db._validate_prediction("pred_swing", "went up", is_correct=True)
+        db._validate_prediction("pred_scalp", "went up", is_correct=True)
+
+        result = db._get_prediction_track_record(strategy_type="swing")
+        self.assertEqual(result["windows"]["global"]["total"], 1)
+        self.assertEqual(result["filters"]["strategy_type"], "swing")
+
+    def test_filter_by_agent(self):
+        db._record_prediction(
+            prediction_id="pred_ta", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+        )
+        db._record_prediction(
+            prediction_id="pred_ns", trade_id="trade_001",
+            symbol="BTC/USDT", agent="news-sentiment",
+            prediction_type="sentiment", prediction="bullish",
+        )
+        db._validate_prediction("pred_ta", "went up", is_correct=True)
+        db._validate_prediction("pred_ns", "bullish confirmed", is_correct=True)
+
+        result = db._get_prediction_track_record(agent="technical-analyst")
+        self.assertEqual(result["windows"]["global"]["total"], 1)
+        self.assertEqual(result["filters"]["agent"], "technical-analyst")
+
+    def test_filter_by_prediction_type(self):
+        db._record_prediction(
+            prediction_id="pred_dir", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+        )
+        db._record_prediction(
+            prediction_id="pred_sup", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="support_level", prediction="holds $96k",
+        )
+        db._validate_prediction("pred_dir", "went up", is_correct=True)
+        db._validate_prediction("pred_sup", "held", is_correct=True)
+
+        result = db._get_prediction_track_record(prediction_type="price_direction")
+        self.assertEqual(result["windows"]["global"]["total"], 1)
+
+    def test_combined_filters(self):
+        """Multiple filters should narrow results."""
+        db._record_prediction(
+            prediction_id="pred_001", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+        )
+        db._validate_prediction("pred_001", "went up", is_correct=True)
+
+        result = db._get_prediction_track_record(
+            symbol="BTC/USDT", strategy_type="swing", agent="technical-analyst"
+        )
+        self.assertEqual(result["windows"]["global"]["total"], 1)
+        self.assertEqual(result["windows"]["global"]["accuracy"], 1.0)
+
+        # Non-matching combo returns 0
+        result = db._get_prediction_track_record(
+            symbol="ETH/USDT", strategy_type="swing"
+        )
+        self.assertEqual(result["windows"]["global"]["total"], 0)
+
+    def test_time_windows(self):
+        """Data created now should appear in all time windows."""
+        db._record_prediction(
+            prediction_id="pred_001", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="test", prediction="test",
+        )
+        db._validate_prediction("pred_001", "actual", is_correct=True)
+
+        result = db._get_prediction_track_record(agent="technical-analyst")
+        w = result["windows"]
+        self.assertEqual(w["7d"]["total"], 1)
+        self.assertEqual(w["30d"]["total"], 1)
+        self.assertEqual(w["90d"]["total"], 1)
+        self.assertEqual(w["global"]["total"], 1)
+
+    def test_custom_windows(self):
+        result = db._get_prediction_track_record(
+            agent="technical-analyst", days_windows="[3,14]"
+        )
+        w = result["windows"]
+        self.assertIn("3d", w)
+        self.assertIn("14d", w)
+        self.assertIn("global", w)
+        self.assertNotIn("7d", w)
+
+    def test_includes_evaluations(self):
+        eval_text = "Excellent call. RSI oversold + funding negative = textbook setup."
+        db._record_prediction(
+            prediction_id="pred_001", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+        )
+        db._validate_prediction(
+            "pred_001", "BTC up 5%", is_correct=True,
+            evaluation=eval_text,
+        )
+        result = db._get_prediction_track_record(agent="technical-analyst")
+        evals = result["windows"]["recent_evaluations"]
+        self.assertEqual(len(evals), 1)
+        self.assertEqual(evals[0]["evaluation"], eval_text)
+        # Should include agent and strategy_type from JOIN
+        self.assertEqual(evals[0]["agent"], "technical-analyst")
+        self.assertEqual(evals[0]["strategy_type"], "swing")
+
+    def test_excludes_evaluations_when_zero(self):
+        db._record_prediction(
+            prediction_id="pred_001", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="test", prediction="test",
+        )
+        db._validate_prediction("pred_001", "outcome", is_correct=True,
+                                evaluation="some eval")
+        result = db._get_prediction_track_record(
+            agent="technical-analyst", include_evaluations=0
+        )
+        self.assertNotIn("recent_evaluations", result["windows"])
+
+    def test_no_filters_returns_all(self):
+        """Without any filters, returns all validated predictions."""
+        db._record_prediction(
+            prediction_id="pred_001", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+        )
+        db._record_prediction(
+            prediction_id="pred_002", trade_id="trade_002",
+            symbol="ETH/USDT", agent="news-sentiment",
+            prediction_type="sentiment", prediction="bullish",
+        )
+        db._validate_prediction("pred_001", "went up", is_correct=True)
+        db._validate_prediction("pred_002", "was bullish", is_correct=False)
+
+        result = db._get_prediction_track_record()
+        self.assertEqual(result["windows"]["global"]["total"], 2)
+        self.assertEqual(result["windows"]["global"]["correct"], 1)
+        self.assertEqual(result["filters"], {})
+
+
+class TestFindExpiredPredictions(TestCase):
+    """Test finding expired predictions for agent evaluation."""
+
+    def setUp(self):
+        if db.DB_PATH.exists():
+            db.DB_PATH.unlink()
+        db._record_trade(
+            trade_id="trade_001", symbol="BTC/USDT", side="long",
+            portfolio_type="futures", entry_price=97000, usd_amount=1000,
+        )
+
+    def test_no_expired_predictions(self):
+        # Prediction with 72h timeframe, just created → not expired
+        db._record_prediction(
+            prediction_id="pred_001", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="price_direction", prediction="up",
+            timeframe_hours=72,
+        )
+        result = db._find_expired_predictions()
+        self.assertEqual(result["total_expired"], 0)
+
+    def test_finds_expired_prediction(self):
+        # Insert prediction with backdated created_at so it's expired
+        conn = db._init_db()
+        conn.execute(
+            """INSERT INTO predictions
+               (id, trade_id, symbol, agent, prediction_type, prediction,
+                target_value, timeframe_hours, confidence, status, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            ("pred_exp", "trade_001", "BTC/USDT", "technical-analyst",
+             "price_target", "BTC to $100k", 100000, 24, 0.75, "pending",
+             "2025-01-01T00:00:00+00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        result = db._find_expired_predictions(
+            current_prices='{"BTC/USDT": 99000}'
+        )
+        self.assertEqual(result["total_expired"], 1)
+        pred = result["expired_predictions"][0]
+        self.assertEqual(pred["prediction_id"], "pred_exp")
+        self.assertEqual(pred["current_price"], 99000)
+        self.assertEqual(pred["target_value"], 100000)
+        self.assertAlmostEqual(pred["price_diff_pct"], -1.0, places=1)
+
+    def test_expired_without_prices(self):
+        """Should still find expired predictions even without current prices."""
+        conn = db._init_db()
+        conn.execute(
+            """INSERT INTO predictions
+               (id, trade_id, symbol, agent, prediction_type, prediction,
+                target_value, timeframe_hours, confidence, status, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            ("pred_exp", "trade_001", "BTC/USDT", "technical-analyst",
+             "price_target", "BTC to $100k", 100000, 24, 0.75, "pending",
+             "2025-01-01T00:00:00+00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        result = db._find_expired_predictions()
+        self.assertEqual(result["total_expired"], 1)
+        pred = result["expired_predictions"][0]
+        self.assertNotIn("current_price", pred)
+
+    def test_non_price_predictions_tagged(self):
+        """Non-price predictions (no target_value) should be tagged."""
+        conn = db._init_db()
+        conn.execute(
+            """INSERT INTO predictions
+               (id, trade_id, symbol, agent, prediction_type, prediction,
+                target_value, timeframe_hours, confidence, status, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            ("pred_sentiment", "trade_001", "BTC/USDT", "news-sentiment",
+             "sentiment", "No negative catalysts", 0, 48, 0.6, "pending",
+             "2025-01-01T00:00:00+00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        result = db._find_expired_predictions()
+        self.assertEqual(result["total_expired"], 1)
+        pred = result["expired_predictions"][0]
+        self.assertFalse(pred["has_price_target"])
+
+    def test_ignores_already_validated(self):
+        """Should not include already validated predictions."""
+        conn = db._init_db()
+        conn.execute(
+            """INSERT INTO predictions
+               (id, trade_id, symbol, agent, prediction_type, prediction,
+                target_value, timeframe_hours, confidence, status, created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            ("pred_done", "trade_001", "BTC/USDT", "technical-analyst",
+             "price_target", "BTC to $100k", 100000, 24, 0.75, "correct",
+             "2025-01-01T00:00:00+00:00"),
+        )
+        conn.commit()
+        conn.close()
+
+        result = db._find_expired_predictions()
+        self.assertEqual(result["total_expired"], 0)
+
+    def test_ignores_no_timeframe(self):
+        """Predictions without timeframe_hours should not expire."""
+        db._record_prediction(
+            prediction_id="pred_notime", trade_id="trade_001",
+            symbol="BTC/USDT", agent="technical-analyst",
+            prediction_type="general", prediction="BTC bullish long-term",
+            timeframe_hours=0,
+        )
+        result = db._find_expired_predictions()
+        self.assertEqual(result["total_expired"], 0)
+
+
+class TestUpdateTrade(TestCase):
+    """Test trade modification (SL/TP updates) and modification history."""
+
+    def setUp(self):
+        if db.DB_PATH.exists():
+            db.DB_PATH.unlink()
+        db._record_trade(
+            trade_id="mod_001",
+            symbol="BTC/USDT",
+            side="long",
+            portfolio_type="futures",
+            entry_price=97000,
+            usd_amount=1000,
+            leverage=3,
+            stop_loss=94500,
+            take_profit=103200,
+        )
+
+    def test_update_stop_loss(self):
+        result = db._update_trade("mod_001", stop_loss=95000, notes="Tightening SL after support confirmed")
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(len(result["changes"]), 1)
+        self.assertEqual(result["changes"][0]["field"], "stop_loss")
+        self.assertEqual(result["changes"][0]["old"], 94500)
+        self.assertEqual(result["changes"][0]["new"], 95000)
+        # Verify trade updated in DB
+        trades = db._query_trades(symbol="BTC/USDT")
+        self.assertEqual(trades["trades"][0]["stop_loss"], 95000)
+
+    def test_update_take_profit(self):
+        result = db._update_trade("mod_001", take_profit=105000, notes="Extending TP on momentum")
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(result["changes"][0]["field"], "take_profit")
+        self.assertEqual(result["changes"][0]["old"], 103200)
+        self.assertEqual(result["changes"][0]["new"], 105000)
+
+    def test_update_both_sl_tp(self):
+        result = db._update_trade("mod_001", stop_loss=95500, take_profit=106000, notes="Trailing stop adjustment")
+        self.assertEqual(result["status"], "success")
+        self.assertEqual(len(result["changes"]), 2)
+        fields = [c["field"] for c in result["changes"]]
+        self.assertIn("stop_loss", fields)
+        self.assertIn("take_profit", fields)
+
+    def test_update_no_change_needed(self):
+        """Passing the same value should report no changes."""
+        result = db._update_trade("mod_001", stop_loss=94500)
+        self.assertEqual(result["status"], "success")
+        self.assertIn("No changes", result["message"])
+
+    def test_update_nonexistent_trade(self):
+        result = db._update_trade("nonexistent")
+        self.assertEqual(result["status"], "error")
+
+    def test_update_closed_trade_fails(self):
+        db._close_trade("mod_001", exit_price=100000, close_reason="TP hit")
+        result = db._update_trade("mod_001", stop_loss=96000)
+        self.assertEqual(result["status"], "error")
+
+    def test_modification_history_recorded(self):
+        db._update_trade("mod_001", stop_loss=95000, notes="First adjustment")
+        db._update_trade("mod_001", stop_loss=95500, notes="Second adjustment")
+        mods = db._get_trade_modifications("mod_001")
+        self.assertEqual(mods["status"], "success")
+        self.assertEqual(len(mods["modifications"]), 2)
+        # Most recent first
+        self.assertEqual(mods["modifications"][0]["new_value"], 95500)
+        self.assertEqual(mods["modifications"][1]["new_value"], 95000)
+
+    def test_modification_history_all_trades(self):
+        db._record_trade(
+            trade_id="mod_002", symbol="ETH/USDT", side="long",
+            portfolio_type="spot", entry_price=3200, usd_amount=500,
+            stop_loss=3000, take_profit=3600,
+        )
+        db._update_trade("mod_001", stop_loss=95000, notes="BTC SL")
+        db._update_trade("mod_002", take_profit=3800, notes="ETH TP")
+        mods = db._get_trade_modifications()
+        self.assertEqual(len(mods["modifications"]), 2)
+
+    def test_modification_stores_reason(self):
+        db._update_trade("mod_001", stop_loss=95200, notes="Risk-specialist recommended tighter SL due to volatility spike")
+        mods = db._get_trade_modifications("mod_001")
+        self.assertIn("volatility spike", mods["modifications"][0]["reason"])
 
 
 if __name__ == "__main__":

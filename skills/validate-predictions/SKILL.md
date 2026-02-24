@@ -10,16 +10,24 @@ Review all pending predictions and check them against current market data.
 
 ## Workflow
 
-### Step 1: Check Pending Predictions
-Delegate to `learning-agent` agent:
-"Read data/trades/predictions.json and find all predictions with status 'pending'. For each pending prediction:
-1. Use crypto-data MCP to check current price of the symbol
+### Step 0: Auto-Find Expired Predictions
+Delegate using the Task tool with `subagent_type: general-purpose` and `model: opus`:
+
+"You are the learning-agent. Read agents/learning-agent.md for your analysis framework.
+First, use get_crypto_prices() from crypto-data MCP to get current prices for major coins (bitcoin, ethereum, solana, etc.).
+Then call find_expired_predictions(current_prices='{\"BTC/USDT\": ..., \"ETH/USDT\": ...}') from crypto-learning-db to discover predictions whose timeframe has passed.
+For each expired prediction, reason about how close it was and validate with an NL evaluation using validate_prediction().
+Do NOT use the Edit tool."
+
+### Step 1: Check Remaining Pending Predictions
+Delegate using the Task tool with `subagent_type: general-purpose` and `model: opus`:
+
+"You are the learning-agent. Call query_predictions(status='pending') from crypto-learning-db for predictions still within their timeframe.
+For each prediction:
+1. Use get_exchange_prices(symbol=...) from crypto-exchange MCP to check current price
 2. Compare current price against the prediction's target_value
-3. Check if the prediction's timeframe_hours has expired
-4. If expired: mark as 'correct' or 'incorrect' based on whether the prediction came true, fill actual_outcome
-5. If still within timeframe: report current progress toward or away from target
-6. Update data/trades/predictions.json with any status changes
-7. If any predictions were resolved, also update data/trades/agent-scorecards.json with accuracy scores"
+3. Report current progress toward or away from target
+Do NOT use the Edit tool."
 
 ### Step 2: Present Results
 Show a summary table:
@@ -41,7 +49,7 @@ Show a summary table:
 - Incorrect: X (X%)
 - Pending: X
 
-### Agent Accuracy Rankings
-| Agent | Accuracy | Confidence Adj. | Streak |
-|-------|----------|-----------------|--------|
+### Track Record by Setup Type
+| Setup Type | Total | Correct | Accuracy | Trend |
+|-----------|-------|---------|----------|-------|
 ```

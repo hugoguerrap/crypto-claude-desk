@@ -16,7 +16,7 @@ Run these checks in parallel using Bash:
 - `python3 --version` or `python --version` to check Python
 - `which uv` or `where uv` to check if uv is installed
 - Check if `.venv` directory exists in the plugin root
-- Check if `data/trades/portfolio.json` exists
+- Check if `data/db/` directory exists
 
 ### Step 2: Install uv (if missing)
 Based on detected OS:
@@ -51,10 +51,10 @@ uv sync --project <plugin_root>
 
 ### Step 4: Create data directories
 ```bash
-mkdir -p data/trades data/reports data/logs .claude/agent-memory/portfolio-manager
+mkdir -p data/trades data/reports data/logs data/db .claude/agent-memory/portfolio-manager
 ```
 
-If `data/trades/portfolio.json` doesn't exist, copy from `data/trades/portfolio.json.example`.
+The SQLite database (`data/db/learning.db`) is created automatically by the crypto-learning-db MCP server on first use. No manual initialization needed.
 
 ### Step 5: Verify MCP servers work
 Test that one MCP server can start by running:
@@ -67,9 +67,7 @@ If this fails, diagnose and fix. Common issues:
 - Missing system dependencies → platform-specific guidance
 
 ### Step 6: Check recommended settings
-Read `~/.claude/settings.json` and check if:
-- `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS` is set to `"1"`
-- MCP tool permissions are allowed
+Read `~/.claude/settings.json` and check if MCP tool permissions are allowed.
 
 If not, show the user what to add and offer to configure it.
 
@@ -83,10 +81,9 @@ Crypto Trading Desk - Setup Complete
   Python:       3.12.8
   uv:           0.6.13
   Dependencies: 5/5 installed
-  MCP Servers:  6/6 ready
+  MCP Servers:  7/7 ready
   Data dirs:    Created
-  Portfolio:    Initialized ($20,000 paper trading)
-  Agent Teams:  Enabled / Not enabled (add to settings.json)
+  Database:     SQLite ready ($20,000 paper trading)
 
   Ready to use:
     /crypto-trading-desk:quick BTC     (fast market check)

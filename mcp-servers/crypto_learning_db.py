@@ -97,6 +97,7 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
                         CHECK(status IN ('pending','correct','incorrect','expired')),
         actual_outcome  TEXT,
         error_margin    REAL,
+        evaluation      TEXT,  -- agent's NL analysis of how close the prediction was
         created_at      TEXT NOT NULL DEFAULT (datetime('now')),
         validated_at    TEXT,
         FOREIGN KEY (trade_id) REFERENCES trades(id)
@@ -105,30 +106,6 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     CREATE INDEX IF NOT EXISTS idx_predictions_trade ON predictions(trade_id);
     CREATE INDEX IF NOT EXISTS idx_predictions_agent ON predictions(agent);
     CREATE INDEX IF NOT EXISTS idx_predictions_status ON predictions(status);
-
-    CREATE TABLE IF NOT EXISTS agent_scorecards (
-        agent               TEXT PRIMARY KEY,
-        total_signals       INTEGER NOT NULL DEFAULT 0,
-        accurate_signals    INTEGER NOT NULL DEFAULT 0,
-        accuracy_rate       REAL NOT NULL DEFAULT 0,
-        confidence_adjustment REAL NOT NULL DEFAULT 1.0,
-        streak              INTEGER NOT NULL DEFAULT 0,
-        last_updated        TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS scorecard_history (
-        id              INTEGER PRIMARY KEY AUTOINCREMENT,
-        agent           TEXT NOT NULL,
-        trade_id        TEXT NOT NULL,
-        prediction_correct INTEGER NOT NULL,
-        new_accuracy    REAL NOT NULL,
-        new_confidence_adjustment REAL NOT NULL,
-        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-        FOREIGN KEY (agent) REFERENCES agent_scorecards(agent),
-        FOREIGN KEY (trade_id) REFERENCES trades(id)
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_sh_agent ON scorecard_history(agent);
 
     CREATE TABLE IF NOT EXISTS patterns (
         name            TEXT PRIMARY KEY,
@@ -152,6 +129,19 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         created_at      TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS trade_modifications (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        trade_id        TEXT NOT NULL,
+        field           TEXT NOT NULL,
+        old_value       REAL,
+        new_value       REAL,
+        reason          TEXT,  -- NL explanation for the change
+        created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+        FOREIGN KEY (trade_id) REFERENCES trades(id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_tm_trade ON trade_modifications(trade_id);
+
     CREATE TABLE IF NOT EXISTS portfolio_state (
         id              INTEGER PRIMARY KEY CHECK(id = 1),
         spot_initial    REAL NOT NULL DEFAULT 10000,
@@ -168,19 +158,23 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
     """)
     conn.commit()
 
-    # Seed default portfolio state and agent scorecards if missing.
+    # Schema migrations for existing databases.
+    for migration in (
+        "ALTER TABLE predictions ADD COLUMN evaluation TEXT",
+        "DROP TABLE IF EXISTS scorecard_history",
+        "DROP TABLE IF EXISTS agent_scorecards",
+    ):
+        try:
+            conn.execute(migration)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # Column/table already exists or already dropped
+
+    # Seed default portfolio state if missing.
     cur = conn.execute("SELECT COUNT(*) FROM portfolio_state")
     if cur.fetchone()[0] == 0:
         conn.execute(
             "INSERT INTO portfolio_state(id) VALUES(1)"
-        )
-    for agent in (
-        "market-monitor", "technical-analyst", "news-sentiment",
-        "risk-specialist", "portfolio-manager",
-    ):
-        conn.execute(
-            "INSERT OR IGNORE INTO agent_scorecards(agent) VALUES(?)",
-            (agent,),
         )
     conn.commit()
 
@@ -304,6 +298,82 @@ def _close_trade(
         conn.close()
 
 
+def _update_trade(
+    trade_id: str,
+    stop_loss: float | None = None,
+    take_profit: float | None = None,
+    notes: str = "",
+) -> dict:
+    """Update SL/TP on an open trade. Logs every change with NL reason."""
+    conn = _init_db()
+    try:
+        row = conn.execute(
+            "SELECT * FROM trades WHERE id = ? AND status = 'open'", (trade_id,)
+        ).fetchone()
+        if not row:
+            return {"status": "error", "error": f"No open trade {trade_id}"}
+        t = dict(row)
+        now = _now_iso()
+        changes: list[dict] = []
+
+        if stop_loss is not None and stop_loss != t["stop_loss"]:
+            conn.execute(
+                "INSERT INTO trade_modifications (trade_id, field, old_value, new_value, reason, created_at) VALUES (?,?,?,?,?,?)",
+                (trade_id, "stop_loss", t["stop_loss"], stop_loss, notes, now),
+            )
+            conn.execute(
+                "UPDATE trades SET stop_loss = ? WHERE id = ?",
+                (stop_loss, trade_id),
+            )
+            changes.append({"field": "stop_loss", "old": t["stop_loss"], "new": stop_loss})
+
+        if take_profit is not None and take_profit != t["take_profit"]:
+            conn.execute(
+                "INSERT INTO trade_modifications (trade_id, field, old_value, new_value, reason, created_at) VALUES (?,?,?,?,?,?)",
+                (trade_id, "take_profit", t["take_profit"], take_profit, notes, now),
+            )
+            conn.execute(
+                "UPDATE trades SET take_profit = ? WHERE id = ?",
+                (take_profit, trade_id),
+            )
+            changes.append({"field": "take_profit", "old": t["take_profit"], "new": take_profit})
+
+        if not changes:
+            return {"status": "success", "trade_id": trade_id, "message": "No changes needed"}
+
+        conn.commit()
+        return {
+            "status": "success",
+            "trade_id": trade_id,
+            "changes": changes,
+            "reason": notes,
+        }
+    except Exception as e:
+        conn.rollback()
+        return {"status": "error", "error": str(e)}
+    finally:
+        conn.close()
+
+
+def _get_trade_modifications(trade_id: str = "", limit: int = 20) -> dict:
+    """Get modification history for a trade (or all trades)."""
+    conn = _init_db()
+    try:
+        if trade_id:
+            rows = conn.execute(
+                "SELECT * FROM trade_modifications WHERE trade_id = ? ORDER BY created_at DESC LIMIT ?",
+                (trade_id, limit),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                "SELECT * FROM trade_modifications ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+        return {"status": "success", "modifications": _rows_to_list(rows)}
+    finally:
+        conn.close()
+
+
 def _query_trades(
     symbol: str = "",
     status: str = "",
@@ -400,7 +470,17 @@ def _validate_prediction(
     actual_outcome: str,
     is_correct: bool,
     error_margin: float = 0,
+    evaluation: str = "",
 ) -> dict:
+    """Validate a prediction. Pure recording — no formula scoring.
+
+    The agent provides:
+    - actual_outcome: what happened in the market
+    - is_correct: simple boolean for counting
+    - error_margin: numerical difference if applicable
+    - evaluation: agent's NL reasoning about how close the prediction was,
+      why it worked/failed, and what we can learn from it
+    """
     conn = _init_db()
     try:
         pred = _row_to_dict(
@@ -408,53 +488,24 @@ def _validate_prediction(
         )
         if not pred:
             return {"status": "error", "error": f"No prediction {prediction_id}"}
+        if pred["status"] != "pending":
+            return {"status": "error", "error": f"Prediction {prediction_id} already validated as '{pred['status']}'"}
 
         new_status = "correct" if is_correct else "incorrect"
         now = _now_iso()
         conn.execute(
             """UPDATE predictions SET status=?, actual_outcome=?,
-               error_margin=?, validated_at=? WHERE id=?""",
-            (new_status, actual_outcome, error_margin, now, prediction_id),
+               error_margin=?, evaluation=?, validated_at=? WHERE id=?""",
+            (new_status, actual_outcome, error_margin, evaluation, now,
+             prediction_id),
         )
 
-        agent = pred["agent"]
-        sc = _row_to_dict(
-            conn.execute("SELECT * FROM agent_scorecards WHERE agent = ?", (agent,)).fetchone()
-        )
-        rate = 0.0
-        adj = 1.0
-        if sc:
-            total = sc["total_signals"] + 1
-            accurate = sc["accurate_signals"] + (1 if is_correct else 0)
-            rate = accurate / total if total > 0 else 0
-            if is_correct:
-                adj = min(sc["confidence_adjustment"] + 0.05, 1.5)
-                streak = max(sc["streak"], 0) + 1
-            else:
-                adj = max(sc["confidence_adjustment"] - 0.1, 0.5)
-                streak = min(sc["streak"], 0) - 1
-            conn.execute(
-                """UPDATE agent_scorecards SET total_signals=?, accurate_signals=?,
-                   accuracy_rate=?, confidence_adjustment=?, streak=?, last_updated=?
-                   WHERE agent=?""",
-                (total, accurate, round(rate, 4), round(adj, 2), streak, now, agent),
-            )
-            conn.execute(
-                """INSERT INTO scorecard_history
-                   (agent, trade_id, prediction_correct, new_accuracy,
-                    new_confidence_adjustment, created_at)
-                   VALUES (?,?,?,?,?,?)""",
-                (agent, pred["trade_id"], 1 if is_correct else 0,
-                 round(rate, 4), round(adj, 2), now),
-            )
         conn.commit()
         return {
             "status": "success",
             "prediction_id": prediction_id,
-            "agent": agent,
+            "agent": pred["agent"],
             "result": new_status,
-            "new_accuracy": round(rate, 4) if sc else None,
-            "new_confidence_adjustment": round(adj, 2) if sc else None,
         }
     except Exception as e:
         conn.rollback()
@@ -492,71 +543,6 @@ def _query_predictions(
             params + [limit],
         ).fetchall()
         return {"status": "success", "predictions": _rows_to_list(rows)}
-    finally:
-        conn.close()
-
-
-def _get_agent_scorecards() -> dict:
-    conn = _init_db()
-    try:
-        rows = conn.execute("SELECT * FROM agent_scorecards ORDER BY accuracy_rate DESC").fetchall()
-        return {"status": "success", "scorecards": _rows_to_list(rows)}
-    finally:
-        conn.close()
-
-
-def _get_agent_performance(
-    agent: str,
-    symbol: str = "",
-    strategy_type: str = "",
-    limit: int = 10,
-) -> dict:
-    conn = _init_db()
-    try:
-        clauses = ["p.agent = ?"]
-        params: list[Any] = [agent]
-        if symbol:
-            clauses.append("p.symbol = ?")
-            params.append(symbol.upper())
-        if strategy_type:
-            clauses.append("t.strategy_type = ?")
-            params.append(strategy_type)
-        where = " AND ".join(clauses)
-
-        total = conn.execute(
-            f"""SELECT COUNT(*) FROM predictions p
-                LEFT JOIN trades t ON p.trade_id = t.id
-                WHERE {where} AND p.status IN ('correct','incorrect')""",
-            params,
-        ).fetchone()[0]
-
-        correct = conn.execute(
-            f"""SELECT COUNT(*) FROM predictions p
-                LEFT JOIN trades t ON p.trade_id = t.id
-                WHERE {where} AND p.status = 'correct'""",
-            params,
-        ).fetchone()[0]
-
-        rate = correct / total if total > 0 else 0
-
-        recent = _rows_to_list(conn.execute(
-            f"""SELECT p.*, t.strategy_type, t.result as trade_result
-                FROM predictions p
-                LEFT JOIN trades t ON p.trade_id = t.id
-                WHERE {where} AND p.status IN ('correct','incorrect')
-                ORDER BY p.validated_at DESC LIMIT ?""",
-            params + [limit],
-        ).fetchall())
-
-        return {
-            "status": "success",
-            "agent": agent,
-            "filters": {"symbol": symbol, "strategy_type": strategy_type},
-            "total_predictions": total,
-            "correct_predictions": correct,
-            "contextual_accuracy": round(rate, 4),
-            "recent_validations": recent,
-        }
     finally:
         conn.close()
 
@@ -693,12 +679,13 @@ def _generate_summary(period: str = "", summary_type: str = "monthly") -> dict:
         total_pnl = sum(t["pnl_usd"] or 0 for t in trades)
         win_rate = wins / total if total > 0 else 0
 
-        # Agent performance in period
+        # Agent performance in period (from predictions directly)
         agent_stats = _rows_to_list(conn.execute(
             """SELECT agent, COUNT(*) as total,
-                      SUM(CASE WHEN prediction_correct=1 THEN 1 ELSE 0 END) as correct
-               FROM scorecard_history
-               WHERE created_at >= ? AND created_at < ?
+                      SUM(CASE WHEN status='correct' THEN 1 ELSE 0 END) as correct
+               FROM predictions
+               WHERE status IN ('correct','incorrect')
+                 AND validated_at >= ? AND validated_at < ?
                GROUP BY agent""",
             (date_start, date_end),
         ).fetchall())
@@ -833,7 +820,7 @@ def _migrate_from_json(json_dir: str = "") -> dict:
         json_dir = str(Path(__file__).resolve().parent.parent / "data" / "trades")
     json_path = Path(json_dir)
     conn = _init_db()
-    migrated = {"trades": 0, "predictions": 0, "scorecards": 0, "patterns": 0}
+    migrated = {"trades": 0, "predictions": 0, "patterns": 0}
     try:
         # Portfolio / trades
         pf = json_path / "portfolio.json"
@@ -908,39 +895,6 @@ def _migrate_from_json(json_dir: str = "") -> dict:
                 except sqlite3.IntegrityError:
                     pass
 
-        # Scorecards
-        sc_file = json_path / "agent-scorecards.json"
-        if not sc_file.exists():
-            sc_file = json_path / "agent-scorecards.json.example"
-        if sc_file.exists():
-            data = json.loads(sc_file.read_text())
-            for agent, sc in data.get("scorecards", {}).items():
-                conn.execute(
-                    """UPDATE agent_scorecards SET
-                       total_signals=?, accurate_signals=?, accuracy_rate=?,
-                       confidence_adjustment=?, streak=?, last_updated=?
-                       WHERE agent=?""",
-                    (sc.get("total_signals", 0), sc.get("accurate_signals", 0),
-                     sc.get("accuracy_rate", 0), sc.get("confidence_adjustment", 1.0),
-                     sc.get("streak", 0), sc.get("last_updated"), agent),
-                )
-                migrated["scorecards"] += 1
-            for h in data.get("history", []):
-                try:
-                    conn.execute(
-                        """INSERT INTO scorecard_history
-                           (agent, trade_id, prediction_correct,
-                            new_accuracy, new_confidence_adjustment, created_at)
-                           VALUES (?,?,?,?,?,?)""",
-                        (h.get("agent"), h.get("trade_id"),
-                         1 if h.get("prediction_correct") else 0,
-                         h.get("new_accuracy", 0),
-                         h.get("new_confidence_adjustment", 1.0),
-                         h.get("timestamp", _now_iso())),
-                    )
-                except sqlite3.IntegrityError:
-                    pass
-
         # Patterns
         pat_file = json_path / "patterns.json"
         if not pat_file.exists():
@@ -974,12 +928,205 @@ def _migrate_from_json(json_dir: str = "") -> dict:
         conn.close()
 
 
+def _get_prediction_track_record(
+    symbol: str = "",
+    strategy_type: str = "",
+    prediction_type: str = "",
+    agent: str = "",
+    days_windows: str = "[7,30,90]",
+    include_evaluations: int = 5,
+) -> dict:
+    """Prediction-centric track record. Queries predictions JOIN trades directly.
+
+    Replaces the old agent-centric get_agent_scorecards, get_recency_scores,
+    and get_agent_performance. The key shift: agent is a FILTER, not the
+    primary key. The question is "how has this type of setup performed?"
+    not "how much do I trust this agent?"
+
+    Args:
+        symbol: Filter by symbol (e.g., "BTC/USDT")
+        strategy_type: Filter by strategy (e.g., "swing", "breakout")
+        prediction_type: Filter by prediction type (e.g., "price_direction")
+        agent: Filter by agent (optional — agent is ONE filter, not the key)
+        days_windows: JSON array of day windows for time-bucketed accuracy
+        include_evaluations: Number of recent NL evaluations to include
+    """
+    conn = _init_db()
+    try:
+        windows = json.loads(days_windows) if days_windows else [7, 30, 90]
+
+        # Build base WHERE clause
+        base_clauses: list[str] = ["p.status IN ('correct','incorrect')"]
+        base_params: list[Any] = []
+        if symbol:
+            base_clauses.append("p.symbol = ?")
+            base_params.append(symbol.upper())
+        if strategy_type:
+            base_clauses.append("t.strategy_type = ?")
+            base_params.append(strategy_type)
+        if prediction_type:
+            base_clauses.append("p.prediction_type = ?")
+            base_params.append(prediction_type)
+        if agent:
+            base_clauses.append("p.agent = ?")
+            base_params.append(agent)
+
+        base_where = " AND ".join(base_clauses)
+
+        # Time-windowed accuracy
+        windows_data: dict[str, Any] = {}
+        for days in windows:
+            r = conn.execute(
+                f"""SELECT COUNT(*) as total,
+                           SUM(CASE WHEN p.status='correct' THEN 1 ELSE 0 END) as correct
+                    FROM predictions p
+                    LEFT JOIN trades t ON p.trade_id = t.id
+                    WHERE {base_where}
+                      AND p.validated_at >= datetime('now', ?)""",
+                base_params + [f"-{days} days"],
+            ).fetchone()
+            total = r[0] or 0
+            correct = r[1] or 0
+            windows_data[f"{days}d"] = {
+                "total": total,
+                "correct": correct,
+                "accuracy": round(correct / total, 4) if total > 0 else None,
+            }
+
+        # Global (all-time)
+        r = conn.execute(
+            f"""SELECT COUNT(*) as total,
+                       SUM(CASE WHEN p.status='correct' THEN 1 ELSE 0 END) as correct
+                FROM predictions p
+                LEFT JOIN trades t ON p.trade_id = t.id
+                WHERE {base_where}""",
+            base_params,
+        ).fetchone()
+        total_all = r[0] or 0
+        correct_all = r[1] or 0
+        windows_data["global"] = {
+            "total": total_all,
+            "correct": correct_all,
+            "accuracy": round(correct_all / total_all, 4) if total_all > 0 else None,
+        }
+
+        # Recent NL evaluations for context
+        if include_evaluations > 0:
+            evals = _rows_to_list(conn.execute(
+                f"""SELECT p.id, p.symbol, p.agent, p.prediction_type,
+                           p.prediction, p.actual_outcome, p.evaluation,
+                           p.status, p.error_margin, p.validated_at,
+                           t.strategy_type, t.result as trade_result
+                    FROM predictions p
+                    LEFT JOIN trades t ON p.trade_id = t.id
+                    WHERE {base_where}
+                          AND p.evaluation IS NOT NULL AND p.evaluation != ''
+                    ORDER BY p.validated_at DESC LIMIT ?""",
+                base_params + [include_evaluations],
+            ).fetchall())
+            windows_data["recent_evaluations"] = evals
+
+        filters = {}
+        if symbol:
+            filters["symbol"] = symbol
+        if strategy_type:
+            filters["strategy_type"] = strategy_type
+        if prediction_type:
+            filters["prediction_type"] = prediction_type
+        if agent:
+            filters["agent"] = agent
+
+        return {
+            "status": "success",
+            "filters": filters,
+            "windows": windows_data,
+        }
+    finally:
+        conn.close()
+
+
+def _find_expired_predictions(current_prices: str = "{}") -> dict:
+    """Find predictions past their timeframe and return context for agent evaluation.
+    Does NOT auto-validate — returns data so the agent can reason about each one
+    and call validate_prediction() with its own credit judgment.
+
+    current_prices: JSON like {"BTC/USDT": 98500, "ETH/USDT": 3200}
+    """
+    conn = _init_db()
+    try:
+        prices = json.loads(current_prices) if current_prices else {}
+
+        # Find pending predictions whose timeframe has expired
+        rows = conn.execute(
+            """SELECT * FROM predictions
+               WHERE status = 'pending'
+                 AND timeframe_hours > 0
+                 AND datetime(created_at, '+' || CAST(timeframe_hours AS INTEGER) || ' hours')
+                     < datetime('now')
+               ORDER BY created_at""",
+        ).fetchall()
+
+        expired = []
+        for row in rows:
+            p = dict(row)
+            symbol = p["symbol"]
+            current_price = prices.get(symbol)
+            context: dict[str, Any] = {
+                "prediction_id": p["id"],
+                "trade_id": p["trade_id"],
+                "agent": p["agent"],
+                "prediction_type": p["prediction_type"],
+                "prediction": p["prediction"],
+                "target_value": p["target_value"],
+                "timeframe_hours": p["timeframe_hours"],
+                "confidence": p["confidence"],
+                "created_at": p["created_at"],
+                "symbol": symbol,
+            }
+            if current_price is not None and p["target_value"]:
+                target = p["target_value"]
+                context["current_price"] = current_price
+                context["price_diff_pct"] = round(
+                    ((current_price - target) / target) * 100, 2
+                )
+            expired.append(context)
+
+        # Also find non-price predictions that expired (sentiment, funding, etc.)
+        non_price_rows = conn.execute(
+            """SELECT * FROM predictions
+               WHERE status = 'pending'
+                 AND timeframe_hours > 0
+                 AND (target_value IS NULL OR target_value = 0)
+                 AND datetime(created_at, '+' || CAST(timeframe_hours AS INTEGER) || ' hours')
+                     < datetime('now')
+               ORDER BY created_at""",
+        ).fetchall()
+
+        # These are already included in the main query above,
+        # but we tag them so the agent knows they lack price data
+        non_price_ids = {dict(r)["id"] for r in non_price_rows}
+        for item in expired:
+            if item["prediction_id"] in non_price_ids:
+                item["has_price_target"] = False
+            else:
+                item["has_price_target"] = True
+
+        return {
+            "status": "success",
+            "total_expired": len(expired),
+            "expired_predictions": expired,
+            "prices_provided": list(prices.keys()),
+        }
+    finally:
+        conn.close()
+
+
 def _get_db_stats() -> dict:
     conn = _init_db()
     try:
         tables = {}
-        for table in ("trades", "predictions", "agent_scorecards",
-                       "scorecard_history", "patterns", "summaries"):
+        for table in ("trades", "predictions", "patterns", "summaries",
+                       "trade_modifications", "portfolio_state"):
             count = conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
             tables[table] = count
         db_size = DB_PATH.stat().st_size if DB_PATH.exists() else 0
@@ -1021,6 +1168,22 @@ def close_trade(trade_id: str, exit_price: float,
 
 
 @mcp.tool()
+def update_trade(trade_id: str, stop_loss: float | None = None,
+                 take_profit: float | None = None, notes: str = "") -> dict:
+    """Update SL/TP on an open trade. Every change is logged with the reason.
+    Use for trailing stops, TP adjustments, or risk management changes.
+    The agent should explain WHY in the notes field."""
+    return _update_trade(trade_id, stop_loss, take_profit, notes)
+
+
+@mcp.tool()
+def get_trade_modifications(trade_id: str = "", limit: int = 20) -> dict:
+    """Get the modification history for a trade. Shows all SL/TP changes
+    with timestamps and NL reasons. Useful for post-mortem analysis."""
+    return _get_trade_modifications(trade_id, limit)
+
+
+@mcp.tool()
 def query_trades(symbol: str = "", status: str = "", strategy_type: str = "",
                  result: str = "", limit: int = 20, offset: int = 0) -> dict:
     """Query trades with optional filters. Returns only matching rows, not everything."""
@@ -1046,10 +1209,14 @@ def record_prediction(prediction_id: str, trade_id: str, symbol: str,
 
 @mcp.tool()
 def validate_prediction(prediction_id: str, actual_outcome: str,
-                        is_correct: bool, error_margin: float = 0) -> dict:
-    """Validate a prediction and update the agent's scorecard."""
+                        is_correct: bool, error_margin: float = 0,
+                        evaluation: str = "") -> dict:
+    """Validate a prediction. Pure recording — no formula scoring.
+    The agent writes a natural language evaluation explaining how close
+    the prediction was, why it worked/failed, and lessons learned.
+    This evaluation is stored and available for future agents to read."""
     return _validate_prediction(prediction_id, actual_outcome, is_correct,
-                                error_margin)
+                                error_margin, evaluation)
 
 
 @mcp.tool()
@@ -1060,17 +1227,17 @@ def query_predictions(trade_id: str = "", agent: str = "", status: str = "",
 
 
 @mcp.tool()
-def get_agent_scorecards() -> dict:
-    """Get all agent scorecards with confidence adjustments."""
-    return _get_agent_scorecards()
-
-
-@mcp.tool()
-def get_agent_performance(agent: str, symbol: str = "",
-                          strategy_type: str = "", limit: int = 10) -> dict:
-    """Meta-learning: get agent accuracy filtered by conditions (symbol, strategy).
-    This is the key query that enables contextual confidence adjustment."""
-    return _get_agent_performance(agent, symbol, strategy_type, limit)
+def get_prediction_track_record(symbol: str = "", strategy_type: str = "",
+                                prediction_type: str = "", agent: str = "",
+                                days_windows: str = "[7,30,90]",
+                                include_evaluations: int = 5) -> dict:
+    """Prediction-centric track record. Queries predictions JOIN trades directly.
+    The key question: "how has this type of setup performed?" — not "how much
+    do I trust this agent?" Agent is ONE filter, not the primary key.
+    Returns accuracy by time window (7d, 30d, 90d, global) plus recent NL
+    evaluations for context. Use this to assess setup reliability before trading."""
+    return _get_prediction_track_record(symbol, strategy_type, prediction_type,
+                                        agent, days_windows, include_evaluations)
 
 
 @mcp.tool()
@@ -1113,6 +1280,15 @@ def migrate_from_json(json_dir: str = "") -> dict:
     """Migrate data from JSON files (portfolio.json, predictions.json, etc.) into SQLite.
     Only needs to be run once. Safe to re-run (skips existing records)."""
     return _migrate_from_json(json_dir)
+
+
+@mcp.tool()
+def find_expired_predictions(current_prices: str = "{}") -> dict:
+    """Find predictions past their timeframe and return context for evaluation.
+    Does NOT auto-validate. Returns each expired prediction with target vs current
+    price context so the agent can reason about credit and call validate_prediction().
+    current_prices: JSON like '{"BTC/USDT": 98500, "ETH/USDT": 3200}'"""
+    return _find_expired_predictions(current_prices)
 
 
 @mcp.tool()

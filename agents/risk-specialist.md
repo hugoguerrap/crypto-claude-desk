@@ -8,6 +8,7 @@ mcpServers:
   - crypto-data
   - crypto-exchange
   - crypto-learning-db
+  - crypto-defillama
 tools: WebSearch, Read, Write
 disallowedTools: Edit
 maxTurns: 12
@@ -65,6 +66,23 @@ Execute ALL risk analysis tools simultaneously:
 - Spoofing/manipulation detection
 - Cross-exchange liquidity analysis
 
+**Step 5.5: On-Chain Capital Flows (DefiLlama)**
+On-chain TVL changes and stablecoin supply move *before* price. They tell you whether real capital is entering or exiting the system.
+
+Call from `crypto-defillama`:
+- `get_chain_tvl_change(chain="Ethereum", days=7)` — primary chain TVL flow
+- `get_chain_tvl_change(chain="Solana", days=7)` — if the trade is SOL-related
+- `get_stablecoins_overview()` — total stablecoin mcap (rising = fresh buy power; falling = redemptions)
+- `get_dex_volume_24h(chain="<chain>")` — DEX activity (rising volume = real demand)
+- `get_top_protocols(limit=10)` — watch top protocol drawdowns as systemic stress signal
+
+Interpret as a **risk modifier**:
+- **STRONG_OUTFLOW + falling stablecoin supply** → real capital leaving DeFi → AMPLIFY downside risk score by 10-15
+- **STRONG_INFLOW + rising stablecoins** → buy-side power building → REDUCE risk score by 5-10 for longs
+- **Sharp DEX volume drop with flat price** → distribution happening quietly → elevate risk
+
+Include these absolute numbers in the report so portfolio-manager can synthesize them.
+
 **Step 6: Institutional Flow Detection**
 - Large order detection in orderbook data
 - Volume anomaly patterns
@@ -90,4 +108,9 @@ Execute ALL risk analysis tools simultaneously:
 **SHARPE RATIO:** X.XX
 **MICROSTRUCTURE:** [Orderbook health, spoofing alerts, liquidity]
 **INSTITUTIONAL FLOWS:** [Large order detection summary]
+**ON-CHAIN FLOWS (DefiLlama):**
+  - Primary chain TVL 7d: $XB → $XB ([INFLOW / OUTFLOW / FLAT], X.X%)
+  - Stablecoin total mcap: $XB ([rising / falling / flat])
+  - DEX volume 24h: $XB ([+X% / -X%])
+  - On-chain flow modifier applied to risk score: [+/- X]
 **MITIGATION:** [Strategies]

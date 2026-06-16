@@ -25,10 +25,46 @@ from fastmcp import FastMCP
 # Configuration
 # ---------------------------------------------------------------------------
 
-DB_DIR = Path(os.environ.get(
-    "CRYPTO_DB_DIR",
-    Path(__file__).resolve().parent.parent / "data" / "db",
-))
+
+def _discover_db_dir() -> Path:
+    """Choose where the SQLite DB lives. Priority:
+
+    1. CRYPTO_DB_DIR env var (explicit override).
+    2. CLAUDE_PROJECT_DIR env var (Claude Code sometimes provides the
+       user's project root) + /data/db.
+    3. Walk up from the original working directory looking for an existing
+       ``data/db/learning.db``. This matches a developer running ``claude``
+       from a project that already has the DB committed/cached.
+    4. Fallback to ``<plugin>/data/db`` — the legacy plugin-local path.
+
+    The discovery is intentionally read-aware: option 3 only matches when
+    an existing DB is found, so a brand-new install never accidentally
+    creates a DB next to an unrelated project.
+    """
+    if env := os.environ.get("CRYPTO_DB_DIR"):
+        return Path(env)
+    if claude_dir := os.environ.get("CLAUDE_PROJECT_DIR"):
+        candidate = Path(claude_dir) / "data" / "db"
+        if candidate.exists() or (Path(claude_dir) / "data").exists():
+            return candidate
+    # Walk up from PWD (set by the shell when Claude was launched) looking
+    # for an existing data/db/learning.db. Stop after 6 levels to avoid
+    # scanning the whole filesystem on misconfigured setups.
+    start_pwd = os.environ.get("PWD") or os.environ.get("INIT_CWD")
+    if start_pwd:
+        cur = Path(start_pwd).resolve()
+        for _ in range(6):
+            candidate_db = cur / "data" / "db" / "learning.db"
+            if candidate_db.exists():
+                return candidate_db.parent
+            if cur.parent == cur:
+                break
+            cur = cur.parent
+    # Fallback: plugin-local path (legacy default).
+    return Path(__file__).resolve().parent.parent / "data" / "db"
+
+
+DB_DIR = _discover_db_dir()
 DB_PATH = DB_DIR / "learning.db"
 
 mcp = FastMCP("crypto-learning-db")

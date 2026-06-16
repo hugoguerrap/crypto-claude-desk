@@ -114,19 +114,45 @@ Spawn 5 subagents via the Task tool in **3 sequential phases** (see `/analyze` s
 
 **After every trade close, ALWAYS delegate to learning-agent** for prediction validation. This is how the system learns.
 
+## Two Books — Spot vs Futures (Always Explicit)
+
+The portfolio is split into TWO BOOKS with different mandates. Whenever you discuss a position, allocation, or new trade, **always state which book**. Never let the portfolio-manager pick a book by accident — it must justify the choice.
+
+| | **SPOT book** | **FUTURES book** |
+|---|---|---|
+| Job | Long-term conviction, ETF/narrative/on-chain plays | Tactical alpha, hedges, mean reversion, funding plays |
+| Holding | Days to months | Hours to days |
+| Direction | Long-biased (rare inverse setups) | Long + short equally |
+| Leverage | 1x always | 2-5x typical, max 10x |
+| SL distance | 8-15% (let thesis breathe) | 2-4% (leverage compensates) |
+| R/R min | 3:1 | 2:1 |
+| Max open | 5 | 3 |
+| Max allocated | 80% of spot balance | 30% of futures balance (margin) |
+| Funding cost | None | Tracked per trade |
+| Liquidation risk | None | Computed at entry |
+
+**Book selection question for any new trade (the portfolio-manager must answer this explicitly):**
+1. Multi-week thesis (narrative, ETF, upgrade, on-chain) → SPOT
+2. Multi-day technical setup at a specific level → FUTURES
+3. Hedge for existing spot exposure → FUTURES (short)
+4. Funding-rate harvest (delta-neutral) → FUTURES
+5. "Averaging down" a spot loss → STOP. Re-think or wait.
+
+See `agents/portfolio-manager.md` § "Two Books, Two Mindsets" for the full rules.
+
 ## Agents (7)
 
 | Agent | Role | Model | MCPs | Native Tools |
 |-------|------|-------|------|-------------|
 | market-monitor | Fast market data, whale alerts, arbitrage scan | haiku | data, futures, exchange | WebSearch, Read |
 | technical-analyst | Indicators, patterns, signals | sonnet | technical, advanced-indicators, exchange, data, learning-db | WebSearch, Read |
-| news-sentiment | News + social sentiment + crowd psychology | sonnet | learning-db | WebSearch, WebFetch, Read |
-| risk-specialist | Risk, volatility, microstructure, institutional flows | sonnet | technical, microstructure, data, exchange, learning-db | WebSearch, Read |
-| portfolio-manager | Final decisions + trade execution | opus | data, learning-db | Read, Grep, Write |
+| news-sentiment | News + social sentiment + crowd psychology + market-priced consensus | sonnet | learning-db, polymarket | WebSearch, WebFetch, Read |
+| risk-specialist | Risk, volatility, microstructure, institutional flows, on-chain capital flows | sonnet | technical, microstructure, data, exchange, learning-db, defillama | WebSearch, Read |
+| portfolio-manager | Final decisions + trade execution + Polymarket/on-chain sanity check | opus | data, learning-db, polymarket, defillama | Read, Grep, Write |
 | learning-agent | Predictions, patterns, post-mortem | opus | data, learning-db | Read, Grep, Write |
 | system-builder | Generate new MCP servers, agents, skills + tests | opus | (none) | Read, Write, Grep, Glob, WebSearch, WebFetch |
 
-## MCP Servers (7)
+## MCP Servers (9)
 
 | Server | Tools | Data Source |
 |--------|-------|-------------|
@@ -137,6 +163,8 @@ Spawn 5 subagents via the Task tool in **3 sequential phases** (see `/analyze` s
 | crypto-advanced-indicators | 8 | CCXT (OBV, MFI, ADX, Ichimoku, VWAP, Pivot Points) |
 | crypto-market-microstructure | 6 | CCXT (orderbook depth, imbalance, spoofing, market impact) |
 | crypto-learning-db | 18 | SQLite (trades, predictions, patterns, summaries, track records, trade modifications) |
+| crypto-polymarket | 6 | Polymarket Gamma API (prediction market probabilities — wisdom of crowds priced in real capital) |
+| crypto-defillama | 7 | DefiLlama API (TVL by chain/protocol, stablecoin supply, DEX volume, on-chain capital flows) |
 
 > **Note:** News and sentiment analysis uses WebSearch + WebFetch directly (Claude's native web intelligence) instead of MCP. This provides real-time breaking news, social sentiment from Twitter/Reddit, and semantic understanding superior to RSS-based keyword matching.
 

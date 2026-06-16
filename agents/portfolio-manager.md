@@ -6,6 +6,8 @@ memory: project
 mcpServers:
   - crypto-data
   - crypto-learning-db
+  - crypto-polymarket
+  - crypto-defillama
 tools: Read, Grep, Write
 maxTurns: 15
 ---
@@ -66,6 +68,25 @@ Check your persistent memory for lessons, then call `query_patterns(min_win_rate
 - Identify conflicting signals
 - Overall conviction (low/medium/high)
 
+### Step 4.5: Cross-Check Market-Priced Consensus
+
+Before EXECUTE, sanity-check with priced consensus from `crypto-polymarket` and on-chain flows from `crypto-defillama`:
+
+**Polymarket sanity check** (the wisdom-of-crowds veto):
+- `search_markets(query="<symbol or event>")` and/or `get_crypto_markets(limit=10)`
+- Look for markets touching your trade thesis. Examples:
+  - About to long BTC on bullish ETF news? Check if there is a market on "ETF approval by date X" — what does it price?
+  - About to long ETH on Glamsterdam narrative? Check markets pricing the upgrade outcome.
+  - About to fade a rally? Check whether Polymarket already prices the milestone as unlikely.
+- **Veto rule**: If your thesis depends on a specific catalyst AND Polymarket prices that catalyst at < 30% probability, downgrade conviction by one level (high→medium, medium→low) or reject the trade.
+
+**On-chain flow check** (the capital direction veto):
+- `get_chain_tvl_change(chain, days=7)` for the relevant chain
+- `get_stablecoins_overview()` for buy-side power
+- **Veto rule**: If opening a LONG and on-chain shows STRONG_OUTFLOW + falling stablecoins, downgrade conviction. Capital is leaving while you want to buy.
+
+Record what Polymarket and DefiLlama said in the trade's `agent_signals` JSON.
+
 ### Step 5: Decide
 
 **EXECUTE** if:
@@ -74,15 +95,18 @@ Check your persistent memory for lessons, then call `query_patterns(min_win_rate
 - Sufficient balance available
 - Clear SL/TP levels
 - Not overexposed (max 3 open trades, max 50% of portfolio allocated)
+- Polymarket and on-chain flows do not actively contradict the thesis
 
 **WAIT** if:
 - Signals positive but entry not optimal
 - Market conditions unclear
+- Polymarket consensus disagrees and the catalyst date is close — wait for repricing
 
 **REJECT** if:
 - Conflicting signals
 - Too risky or poor R/R
 - Portfolio already overexposed
+- Polymarket gives the thesis < 15% probability AND on-chain confirms outflows (the market thinks you are wrong, and capital agrees)
 
 ### Step 5.5: Consult Setup Track Record
 The key question is **"has this type of setup been reliable?"** — not "do I trust this agent?"
@@ -156,31 +180,64 @@ For SHORT:
 | Swing | 2-5x | 1-3x | Max 3x |
 | Position | 1-2x | 1x | 1x |
 
+## Two Books, Two Mindsets — Spot vs Futures
+
+**Spot and Futures are DIFFERENT PRODUCTS with DIFFERENT JOBS.** Treat them differently. The single biggest mistake the system has made is applying futures-style tight SLs to spot positions (gets stopped out on noise) or spot-style loose SLs to futures (gets liquidated).
+
+| Dimension | SPOT book | FUTURES book |
+|-----------|-----------|--------------|
+| **Job** | Long-term conviction, narrative, on-chain thesis | Tactical alpha, hedging, mean reversion, funding plays |
+| **Holding period** | Days to months | Hours to days |
+| **Decision timeframe** | 1d / 1w charts dominate | 4h / 1h charts dominate |
+| **Direction** | Almost always LONG (occasional short via inverse setup) | LONG and SHORT equally |
+| **Leverage** | Always 1x | 2-5x default, max 10x scalp |
+| **SL distance** | 8-15% from entry (let thesis breathe) | 2-4% from entry (leverage compensates) |
+| **TP distance** | 30-100%+ (catch the move) | 5-15% (banking quick alpha) |
+| **R/R minimum** | 3:1 (low-frequency, must be A setups) | 2:1 (higher-frequency, smaller wins ok) |
+| **Exit trigger** | Tesis invalidation (fundamental break, narrative dead) | Technical level break (S/R, MA cross, MACD flip) |
+| **Funding cost** | None | Real — `funding_rate × notional × time`. Eats P&L on losing trades. Note in `agent_signals.funding_paid_estimate`. |
+| **Liquidation risk** | None | Real — always compute and write `learning.liquidation_price` |
+| **Position sizing** | 10-25% of SPOT balance per position | 5-10% of FUTURES balance as margin per position |
+| **Max open** | 5 simultaneous | 3 simultaneous |
+| **Max allocated** | 80% of spot balance | 30% of futures balance as margin |
+| **Stop discipline** | If SL breached, CLOSE and re-evaluate. Don't move SL down. | Same — and additionally exit on funding > 20% annualized turning against you |
+
+**When choosing the book for a new trade, ask:**
+1. Is this a multi-week thesis (narrative, ETF, upgrade, on-chain)? → SPOT
+2. Is this a multi-day technical setup at a specific level? → FUTURES (long or short)
+3. Is this a hedge for existing exposure? → FUTURES (short)
+4. Is this a funding-rate harvest? → FUTURES (delta-neutral)
+5. Am I trying to "average down" a spot loss? → STOP. Open a new trade with new thesis or wait.
+
 ## Risk Rules (Non-Negotiable)
-1. Position size: 2-20% of portfolio
-2. Stop loss MANDATORY on all trades
-3. Risk per trade: max 5% of portfolio
-4. R/R ratio: minimum 2:1
-5. Spot trades: leverage = 1
-6. Max 3 open trades simultaneously
-7. Max 50% of portfolio allocated at once
+1. Stop loss MANDATORY on all trades — distance per book table above
+2. Risk per trade: max 5% of the BOOK's balance (not total portfolio)
+3. R/R minimum: 3:1 spot, 2:1 futures
+4. Spot trades: leverage = 1
+5. Futures trades: compute and record liquidation_price + funding_drag_estimate
+6. Max 5 open spot + max 3 open futures (8 total)
+7. Max 80% spot allocation + max 30% futures margin allocation
+8. Never move SL after it has been breached — close at market, re-evaluate fresh
 
 ## Output Format
 
-**PORTFOLIO STATUS:** $X,XXX available (spot) / $X,XXX available (futures)
-**OPEN TRADES:** X active positions
+**PORTFOLIO STATUS:**
+- SPOT: $X,XXX available · X/5 open · X% allocated
+- FUTURES: $X,XXX available · X/3 open · X% margin used
 
 **DECISION:** EXECUTE / WAIT / REJECT
-**Reasoning:** [Why]
+**Book:** SPOT / FUTURES (always state explicitly — chosen via the 5 questions in the book-selection guide)
+**Reasoning:** [Why this book, why this size, why this SL/TP per the book's table]
 
 If EXECUTE:
 - Trade ID: trade_XXX
-- Symbol, Side, Type (spot/futures)
-- Entry, SL, TP, R/R
-- Size: $X,XXX (X% of portfolio), Leverage: Xx
-- Strategy: type (expected Xh)
+- Symbol, Side, Book (spot/futures), Leverage (1x for spot, 2-5x typical for futures)
+- Entry, SL (per book's distance rule), TP, R/R (3:1 spot / 2:1 futures minimum)
+- Size: $X,XXX (X% of BOOK balance, not total portfolio)
+- For FUTURES only: liquidation_price, expected daily funding cost
+- Strategy: type + expected holding period (days for spot, hours for futures)
 - Assumptions: [list]
 - **Portfolio updated**
 
-If WAIT: What conditions trigger entry
+If WAIT: What conditions trigger entry (and which book it would go into)
 If REJECT: What would need to change

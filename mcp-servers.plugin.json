@@ -33,6 +33,19 @@
     "crypto-learning-db": {
       "command": "uv",
       "args": ["run", "--frozen", "--project", "${CLAUDE_PLUGIN_ROOT}", "python", "${CLAUDE_PLUGIN_ROOT}/mcp-servers/crypto_learning_db.py"],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}",
+      "env": {
+        "_comment": "Optional: set CRYPTO_DB_DIR to an absolute path if you want the SQLite DB in your project rather than the plugin cache. Without it, the server walks up from PWD looking for an existing data/db/learning.db before falling back to the plugin-relative path."
+      }
+    },
+    "crypto-polymarket": {
+      "command": "uv",
+      "args": ["run", "--frozen", "--project", "${CLAUDE_PLUGIN_ROOT}", "python", "${CLAUDE_PLUGIN_ROOT}/mcp-servers/crypto_polymarket.py"],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}"
+    },
+    "crypto-defillama": {
+      "command": "uv",
+      "args": ["run", "--frozen", "--project", "${CLAUDE_PLUGIN_ROOT}", "python", "${CLAUDE_PLUGIN_ROOT}/mcp-servers/crypto_defillama.py"],
       "cwd": "${CLAUDE_PLUGIN_ROOT}"
     }
   }

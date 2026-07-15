@@ -18,7 +18,7 @@ set -euo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT_DB="$PROJECT_ROOT/data/db/learning.db"
-PLUGIN_DB="${PLUGIN_DB:-$HOME/.claude/plugins/cache/hugoguerrap/crypto-trading-desk/1.0.0/data/db/learning.db}"
+PLUGIN_DB="${PLUGIN_DB:-$HOME/.claude/plugins/cache/hugoguerrap/crypto-trading-desk/1.1.0/data/db/learning.db}"
 
 FORCE=0
 STATUS_ONLY=0

@@ -3,6 +3,9 @@ CLAUDE.local.md
 .claude/settings.local.json
 .claude/agent-memory/
 
+# Personal notes (not for the public repo)
+GUIA-DEL-PROYECTO.md
+
 # Generated MCP config (standalone mode)
 .mcp.json
 

@@ -403,9 +403,9 @@ export function getPredictionAccuracy() {
     .prepare(
       `SELECT
          COUNT(*) AS total,
-         SUM(CASE WHEN status IN ('validated_correct') THEN 1 ELSE 0 END) AS correct,
-         SUM(CASE WHEN status IN ('validated_partial') THEN 1 ELSE 0 END) AS partial,
-         SUM(CASE WHEN status IN ('validated_wrong') THEN 1 ELSE 0 END) AS wrong,
+         SUM(CASE WHEN status IN ('correct','validated_correct') THEN 1 ELSE 0 END) AS correct,
+         SUM(CASE WHEN status IN ('partial','validated_partial') THEN 1 ELSE 0 END) AS partial,
+         SUM(CASE WHEN status IN ('incorrect','wrong','validated_wrong') THEN 1 ELSE 0 END) AS wrong,
          SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending
        FROM predictions`
     )

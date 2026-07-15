@@ -23,6 +23,10 @@ npm run dev        # http://localhost:3000
 
 The dashboard is read-only and never blocks the trading system — both can run simultaneously.
 
+## ⚠️ Embedded terminal (security)
+
+The `/console` page connects to a local PTY server (`server/pty-server.mjs`, port 3001) that spawns a **real OS shell with your full user privileges**. It binds to `127.0.0.1` and rejects non-loopback connections, but you must never expose it beyond localhost — don't run it with `--host`, don't port-forward 3001, and don't tunnel it (ngrok, cloudflared, etc.). Anyone who can reach that port can run arbitrary commands as you.
+
 ## What's on the page
 
 | Section | Source |

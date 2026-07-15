@@ -144,6 +144,8 @@ export function EquityCurve({
                     tickLine={false}
                     axisLine={false}
                     width={60}
+                    domain={["dataMin - 150", "dataMax + 150"]}
+                    allowDecimals={false}
                     tickFormatter={(v) => `$${Number(v).toLocaleString()}`}
                   />
                   <Tooltip
@@ -208,6 +210,8 @@ export function EquityCurve({
                     tickLine={false}
                     axisLine={false}
                     width={60}
+                    domain={["dataMin - 150", "dataMax + 150"]}
+                    allowDecimals={false}
                     tickFormatter={(v) => `$${Number(v).toLocaleString()}`}
                   />
                   <Tooltip

@@ -48,7 +48,7 @@ Then run setup once:
 /crypto-trading-desk:setup
 ```
 
-Setup detects your OS (macOS, Linux, or Windows), installs [uv](https://docs.astral.sh/uv/) if missing, downloads Python dependencies, verifies all 7 MCP servers work, and reports status. Takes ~30 seconds. You only need to do this once.
+Setup detects your OS (macOS, Linux, or Windows), installs [uv](https://docs.astral.sh/uv/) if missing, downloads Python dependencies, verifies all 9 MCP servers work, and reports status. Takes ~30 seconds. You only need to do this once.
 
 ### First thing to try
 
@@ -135,17 +135,19 @@ Phase 3 (~60 sec)
 
 Each agent writes a report file. The next phase reads those files. No message passing — just files on disk.
 
-### 83 MCP tools across 7 servers
+### 95 MCP tools across 9 servers
 
 | Server | Tools | What it provides |
 |--------|-------|-----------------|
 | crypto-data | 11 | Fear & Greed, dominance, rankings, categories (CoinGecko) |
-| crypto-exchange | 16 | Live prices, orderbooks, OHLCV, volume, arbitrage (5 exchanges via CCXT) |
+| crypto-exchange | 15 | Live prices, orderbooks, OHLCV, volume, arbitrage (5 exchanges via CCXT) |
 | crypto-technical | 14 | RSI, MACD, Bollinger, patterns, signals, backtesting |
 | crypto-futures | 10 | Funding rates, open interest, long/short ratios, liquidation levels |
 | crypto-advanced-indicators | 8 | OBV, MFI, ADX, Ichimoku, VWAP, Pivot Points, divergences |
 | crypto-market-microstructure | 6 | Orderbook depth, imbalance, spread, spoofing, market impact |
 | crypto-learning-db | 18 | Trade CRUD, predictions, track records, patterns, summaries, trade modifications (SQLite) |
+| crypto-polymarket | 6 | Prediction market probabilities — wisdom of crowds priced in real capital (Polymarket Gamma) |
+| crypto-defillama | 7 | TVL by chain/protocol, stablecoin supply, DEX volume — on-chain capital flows (DefiLlama) |
 
 All powered by public APIs. **No API keys required.**
 
@@ -163,6 +165,22 @@ The system gets smarter with every trade:
 4. **Expired prediction detection** — Predictions past their timeframe are automatically surfaced with market context so the learning agent can batch-evaluate them
 5. **Pattern library** — Named trading setups (e.g., "oversold bounce at support") with tracked win rates. Patterns above 60% are marked SEEK; below 40% are marked AVOID
 6. **Claude is the consensus engine** — No weighted formulas, no confidence_adjustment math. The portfolio manager reads setup track records, evaluations, and agent reasoning, then decides through natural language analysis how reliable each signal is for this specific trade
+
+### Dashboard (optional)
+
+An optional Next.js ops dashboard lives in `dashboard/`. It reads `data/db/learning.db` **read-only** and visualizes the portfolio: equity curve, trades, predictions with accuracy, patterns, market intelligence (Polymarket + DefiLlama), and analysis reports. It also embeds a local terminal.
+
+```bash
+cd dashboard
+npm install
+npm run dev          # starts Next.js + the terminal (pty) server
+```
+
+Then open `http://localhost:3000`. **Localhost only** — the embedded terminal grants shell access over a loopback WebSocket, so never expose the dev server to the network. Run `/setup` and at least one analysis first so the database exists.
+
+### Dynamic workflows
+
+`.claude/workflows/close-learning.js` is a [dynamic workflow](https://code.claude.com/docs/en/workflows) that validates expired predictions in parallel (one agent per prediction) and closes the learning loop. Run it with `/close-learning`.
 
 Run `/validate-predictions` anytime to check pending predictions against current market data.
 
@@ -294,8 +312,12 @@ crypto-trading-desk/
 ├── bin/                         # autopilot.sh wrapper for cron/headless execution
 ├── skills/                      # 8 slash commands (setup, quick, analyze, portfolio, close-trade, validate-predictions, monitor, create)
 ├── hooks/                       # SessionStart: creates data directories
-├── mcp-servers/                 # 7 Python MCP servers (83 tools total)
+├── mcp-servers/                 # 9 Python MCP servers (95 tools total)
 ├── mcp-servers.plugin.json      # MCP config for plugin distribution
+├── .claude/workflows/           # Dynamic workflows (e.g. close-learning)
+├── dashboard/                   # Next.js ops dashboard (reads the DB read-only, localhost only)
+├── tests/                       # pytest suite for the MCP servers
+├── docs/                        # architecture.md + extending.md
 ├── pyproject.toml               # Python dependencies (pinned in uv.lock)
 ├── uv.lock                      # Reproducible dependency resolution
 ├── .python-version              # Pins Python 3.12

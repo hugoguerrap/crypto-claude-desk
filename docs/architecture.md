@@ -206,7 +206,7 @@ Source: CoinGecko API. Used for market metadata, NOT live prices (CoinGecko can 
 | `get_dominance_stats` | BTC/ETH market dominance |
 | `get_crypto_categories` | Category breakdown (DeFi, L1, Meme, etc.) |
 
-### crypto-exchange (16 tools)
+### crypto-exchange (15 tools)
 
 Source: CCXT multi-exchange (Binance, Kraken, Bitfinex, KuCoin, MEXC). Primary source for accurate live prices.
 
@@ -294,6 +294,33 @@ Source: CCXT orderbook data. Market microstructure analysis.
 | `detect_spoofing_patterns` | Large suspicious order detection |
 | `calculate_market_impact` | Price impact estimation for large orders |
 
+### crypto-polymarket (6 tools)
+
+Source: Polymarket Gamma API (public, no auth). Prediction-market probabilities — the "wisdom of crowds" priced by real capital.
+
+| Tool | Description |
+|---|---|
+| `search_markets` | Full-text search across active prediction markets |
+| `get_market_probabilities` | Outcome probabilities for a specific market |
+| `get_trending_markets` | Most active markets by 24h volume |
+| `get_crypto_markets` | Markets tagged with crypto-related categories |
+| `get_market_detail` | Full detail for one market (description, dates, volume) |
+| `get_top_volume_markets` | Largest markets by total volume |
+
+### crypto-defillama (7 tools)
+
+Source: DefiLlama API + Stablecoins API (public, no auth). On-chain capital flows — where money is actually moving, not just what's quoting.
+
+| Tool | Description |
+|---|---|
+| `get_total_tvl` | Total DeFi TVL across all chains |
+| `get_chain_tvl` | Current TVL for a specific chain |
+| `get_protocol_tvl` | TVL for a specific protocol with per-chain breakdown |
+| `get_top_protocols` | Largest protocols ranked by TVL |
+| `get_stablecoins_overview` | Total stablecoin mcap + breakdown by issuer |
+| `get_dex_volume_24h` | DEX trading volume aggregates by chain |
+| `get_chain_tvl_change` | TVL change over a window (24h/7d/30d) with inflow/outflow classification |
+
 ---
 
 ## Skills
@@ -308,13 +335,14 @@ Skills are user-invocable slash commands defined in `skills/`. Each skill is a M
 | `/portfolio` | `skills/portfolio/SKILL.md` | Portfolio status (read-only) |
 | `/close-trade` | `skills/close-trade/SKILL.md` | Close trade + post-mortem + learning |
 | `/validate-predictions` | `skills/validate-predictions/SKILL.md` | Review pending predictions |
+| `/monitor` | `skills/monitor/SKILL.md` | Autonomous loop: check SL/TP, close trades, evaluate predictions |
 | `/create` | `skills/create/SKILL.md` | Generate new components (MCP, agent, skill) |
 
 ---
 
 ## Portfolio and Paper Trading
 
-All portfolio state lives in `data/trades/portfolio.json`. The portfolio-manager agent is the only agent authorized to write to this file.
+All portfolio state lives in the SQLite database (`data/db/learning.db`, `portfolio_state` table), accessed via the crypto-learning-db MCP. The portfolio-manager agent is the only agent authorized to write portfolio state.
 
 ### Portfolio Structure
 

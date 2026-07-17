@@ -4,10 +4,73 @@ import fs from "node:fs";
 
 let _db: Database.Database | null = null;
 
+const DB_PATH = path.resolve(process.cwd(), "..", "data", "db", "learning.db");
+
+/** True once `/setup` + at least one analysis have created the DB on disk. */
+export function isDbInitialized(): boolean {
+  return fs.existsSync(DB_PATH);
+}
+
+// Schema mirror for the graceful empty state. When learning.db doesn't exist
+// yet (fresh clone, before `/setup`), we serve an in-memory database with the
+// same schema and a default paper-trading account, so every page renders an
+// empty state instead of crashing. Kept in sync with crypto_learning_db.py.
+const EMPTY_SCHEMA = `
+CREATE TABLE trades (
+  id TEXT PRIMARY KEY, symbol TEXT NOT NULL, side TEXT NOT NULL,
+  portfolio_type TEXT NOT NULL, entry_price REAL NOT NULL, exit_price REAL,
+  usd_amount REAL NOT NULL, leverage REAL NOT NULL DEFAULT 1, stop_loss REAL,
+  take_profit REAL, strategy_type TEXT, opened_at TEXT NOT NULL, closed_at TEXT,
+  close_reason TEXT, pnl_usd REAL, pnl_percent REAL, result TEXT,
+  status TEXT NOT NULL DEFAULT 'open', reasoning TEXT, key_assumptions TEXT,
+  agent_signals TEXT, learning TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE predictions (
+  id TEXT PRIMARY KEY, trade_id TEXT NOT NULL, symbol TEXT NOT NULL,
+  agent TEXT NOT NULL, prediction_type TEXT NOT NULL, prediction TEXT NOT NULL,
+  target_value REAL, timeframe_hours REAL, confidence REAL,
+  status TEXT NOT NULL DEFAULT 'pending', actual_outcome TEXT, error_margin REAL,
+  evaluation TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), validated_at TEXT
+);
+CREATE TABLE trade_modifications (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, trade_id TEXT NOT NULL, field TEXT NOT NULL,
+  old_value REAL, new_value REAL, reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE patterns (
+  name TEXT PRIMARY KEY, conditions TEXT, occurrences INTEGER NOT NULL DEFAULT 0,
+  wins INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0,
+  win_rate REAL NOT NULL DEFAULT 0, avg_pnl_percent REAL NOT NULL DEFAULT 0,
+  first_seen TEXT, last_seen TEXT, recommendation TEXT, notes TEXT
+);
+CREATE TABLE summaries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, period TEXT NOT NULL, summary_type TEXT NOT NULL,
+  content TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE TABLE portfolio_state (
+  id INTEGER PRIMARY KEY CHECK(id = 1), spot_initial REAL NOT NULL DEFAULT 10000,
+  spot_balance REAL NOT NULL DEFAULT 10000, futures_initial REAL NOT NULL DEFAULT 10000,
+  futures_balance REAL NOT NULL DEFAULT 10000, currency TEXT NOT NULL DEFAULT 'USDT',
+  total_trades INTEGER NOT NULL DEFAULT 0, wins INTEGER NOT NULL DEFAULT 0,
+  losses INTEGER NOT NULL DEFAULT 0, total_pnl REAL NOT NULL DEFAULT 0, updated_at TEXT
+);
+`;
+
+function createEmptyDb(): Database.Database {
+  const db = new Database(":memory:");
+  db.exec(EMPTY_SCHEMA);
+  // Seed the default fresh paper account so the UI shows a coherent zero-state.
+  db.prepare("INSERT INTO portfolio_state (id) VALUES (1)").run();
+  return db;
+}
+
 function getDb(): Database.Database {
   if (_db) return _db;
-  const dbPath = path.resolve(process.cwd(), "..", "data", "db", "learning.db");
-  _db = new Database(dbPath, { readonly: true, fileMustExist: true });
+  if (!fs.existsSync(DB_PATH)) {
+    _db = createEmptyDb();
+    return _db;
+  }
+  _db = new Database(DB_PATH, { readonly: true, fileMustExist: true });
   _db.pragma("journal_mode = WAL");
   return _db;
 }

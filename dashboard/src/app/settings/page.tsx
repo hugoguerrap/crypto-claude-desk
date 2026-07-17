@@ -12,7 +12,7 @@ export const revalidate = 0;
 
 const MCP_SERVERS = [
   { name: "crypto-data", tools: 11, description: "Market metadata (CoinGecko)" },
-  { name: "crypto-exchange", tools: 16, description: "CCXT multi-exchange data" },
+  { name: "crypto-exchange", tools: 15, description: "CCXT multi-exchange data" },
   { name: "crypto-technical", tools: 14, description: "Indicators + signals" },
   { name: "crypto-futures", tools: 10, description: "Funding, OI, long/short ratios" },
   { name: "crypto-advanced-indicators", tools: 8, description: "OBV, MFI, ADX, Ichimoku" },

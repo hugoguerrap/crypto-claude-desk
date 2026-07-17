@@ -157,7 +157,7 @@ See `agents/portfolio-manager.md` § "Two Books, Two Mindsets" for the full rule
 | Server | Tools | Data Source |
 |--------|-------|-------------|
 | crypto-data | 11 | CoinGecko API (market metadata: fear/greed, dominance, rankings — NOT for live prices) |
-| crypto-exchange | 16 | CCXT multi-exchange (orderbooks, OHLCV, volume, arbitrage) |
+| crypto-exchange | 15 | CCXT multi-exchange (orderbooks, OHLCV, volume, arbitrage) |
 | crypto-technical | 14 | CCXT + calculated (RSI, MACD, Bollinger, patterns, signals) |
 | crypto-futures | 10 | CCXT futures (funding rates, OI, long/short, liquidations) |
 | crypto-advanced-indicators | 8 | CCXT (OBV, MFI, ADX, Ichimoku, VWAP, Pivot Points) |

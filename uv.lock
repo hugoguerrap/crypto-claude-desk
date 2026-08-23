@@ -593,7 +593,7 @@ wheels = [
 
 [[package]]
 name = "crypto-trading-desk"
-version = "1.0.0"
+version = "1.1.2"
 source = { virtual = "." }
 dependencies = [
     { name = "ccxt" },

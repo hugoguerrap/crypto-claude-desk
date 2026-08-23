@@ -99,10 +99,28 @@ Your Server Name MCP Server
 Description of what this server provides.
 """
 
+import json
+
 from fastmcp import FastMCP
 from typing import Dict, Any
 
-mcp = FastMCP("your-server-name")
+
+def _json_native(obj):
+    """Serializer fallback: numpy scalars/arrays (numpy.bool_, int64, float64)
+    break FastMCP's pydantic serialization and kill the stdio session. tolist()/
+    item() convert them to native types; str() covers anything else exotic."""
+    if hasattr(obj, "tolist"):
+        return obj.tolist()
+    if hasattr(obj, "item"):
+        return obj.item()
+    return str(obj)
+
+
+def _tool_serializer(result) -> str:
+    return json.dumps(result, default=_json_native, ensure_ascii=False)
+
+
+mcp = FastMCP("your-server-name", tool_serializer=_tool_serializer)
 
 
 @mcp.tool()
@@ -135,6 +153,11 @@ def your_tool_name(param1: str = "default", param2: int = 10) -> Dict[str, Any]:
 if __name__ == "__main__":
     mcp.run()
 ```
+
+Two hard-won rules:
+
+- **Always pass the `tool_serializer` shown above** if the server touches numpy/pandas. Without it, one numpy scalar in a result crashes the whole stdio session (`PydanticSerializationError`).
+- **Never call a `@mcp.tool()`-decorated function from another tool.** The decorator wraps it into a FastMCP object that isn't plainly callable. Put the real logic in a private `_name()` function and expose it with a thin `@mcp.tool(name="name")` wrapper (see `crypto_futures_data.py` for the pattern).
 
 ### 2. Add to mcp-servers.plugin.json
 

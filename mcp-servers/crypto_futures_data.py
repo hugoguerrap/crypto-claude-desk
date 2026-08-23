@@ -24,6 +24,7 @@ import ccxt
 from fastmcp import FastMCP
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
+import functools
 import statistics
 import logging
 
@@ -98,8 +99,7 @@ def _format_symbol(symbol: str) -> str:
     return f"{symbol}/USDT:USDT"
 
 
-@mcp.tool()
-def get_funding_rate(
+def _get_funding_rate(
     symbol: str = "BTC",
     exchange: str = "binance"
 ) -> Dict[str, Any]:
@@ -165,8 +165,7 @@ def get_funding_rate(
         }
 
 
-@mcp.tool()
-def get_funding_rate_history(
+def _get_funding_rate_history(
     symbol: str = "BTC",
     exchange: str = "binance",
     hours: int = 24
@@ -243,8 +242,7 @@ def get_funding_rate_history(
         }
 
 
-@mcp.tool()
-def get_open_interest(
+def _get_open_interest(
     symbol: str = "BTC",
     exchange: str = "binance"
 ) -> Dict[str, Any]:
@@ -308,8 +306,7 @@ def get_open_interest(
         }
 
 
-@mcp.tool()
-def get_long_short_ratio(
+def _get_long_short_ratio(
     symbol: str = "BTC",
     exchange: str = "binance",
     period: str = "5m"
@@ -419,8 +416,7 @@ def get_long_short_ratio(
         }
 
 
-@mcp.tool()
-def get_taker_buy_sell_ratio(
+def _get_taker_buy_sell_ratio(
     symbol: str = "BTC",
     exchange: str = "binance",
     period: str = "5m"
@@ -519,8 +515,7 @@ def get_taker_buy_sell_ratio(
         }
 
 
-@mcp.tool()
-def calculate_liquidation_levels(
+def _calculate_liquidation_levels(
     symbol: str = "BTC",
     exchange: str = "binance",
     current_price: Optional[float] = None
@@ -618,19 +613,19 @@ def get_perpetual_stats(
         symbol = validate_symbol(symbol)
         exchange = validate_exchange(exchange, supported=set(RELIABLE_FUTURES_EXCHANGES.keys()))
 
-        funding = get_funding_rate(symbol, exchange)
-        oi = get_open_interest(symbol, exchange)
+        funding = _get_funding_rate(symbol, exchange)
+        oi = _get_open_interest(symbol, exchange)
 
         ls_ratio = None
         if exchange == "binance":
-            ls_ratio = get_long_short_ratio(symbol, exchange)
+            ls_ratio = _get_long_short_ratio(symbol, exchange)
 
         taker_ratio = None
         if exchange == "binance":
-            taker_ratio = get_taker_buy_sell_ratio(symbol, exchange)
+            taker_ratio = _get_taker_buy_sell_ratio(symbol, exchange)
 
         current_price = oi.get('current_price') if oi.get('success') else None
-        liq_levels = calculate_liquidation_levels(symbol, exchange, current_price)
+        liq_levels = _calculate_liquidation_levels(symbol, exchange, current_price)
 
         # Signal scoring (0-100)
         score = 50  # Neutral
@@ -705,8 +700,7 @@ def get_perpetual_stats(
         }
 
 
-@mcp.tool()
-def compare_funding_rates(
+def _compare_funding_rates(
     symbol: str = "BTC",
     exchanges: List[str] = None
 ) -> Dict[str, Any]:
@@ -731,7 +725,7 @@ def compare_funding_rates(
 
         for exchange in exchanges:
             try:
-                funding = get_funding_rate(symbol, exchange)
+                funding = _get_funding_rate(symbol, exchange)
                 if funding.get('success'):
                     results[exchange] = funding
                     rates.append({
@@ -805,7 +799,7 @@ def analyze_funding_trend(
         exchange = validate_exchange(exchange, supported=set(RELIABLE_FUTURES_EXCHANGES.keys()))
         hours = validate_positive_int(hours, "hours", max_value=720)
 
-        history = get_funding_rate_history(symbol, exchange, hours)
+        history = _get_funding_rate_history(symbol, exchange, hours)
 
         if not history.get('success'):
             return history
@@ -893,7 +887,7 @@ def detect_funding_arbitrage(
     try:
         symbol = validate_symbol(symbol)
 
-        comparison = compare_funding_rates(symbol)
+        comparison = _compare_funding_rates(symbol)
 
         if not comparison.get('success'):
             return comparison
@@ -955,6 +949,74 @@ def detect_funding_arbitrage(
             "error_type": type(e).__name__,
             "symbol": symbol
         }
+
+
+# ---------------------------------------------------------------------------
+# Public MCP tool wrappers.
+#
+# FastMCP's @mcp.tool() replaces the decorated name with a FunctionTool object
+# that is NOT callable, so a tool calling another tool as a plain function blew
+# up with `TypeError: 'FunctionTool' object is not callable` (hit by
+# get_perpetual_stats, compare_funding_rates, analyze_funding_trend and
+# detect_funding_arbitrage). Fix: the real logic lives in the private `_name`
+# functions above; internal callers use those, and these thin wrappers expose
+# each as an MCP tool. functools.wraps copies the docstring/signature so the
+# tool schemas the agents see are byte-identical to before. NOTE: functools.wraps
+# copies __name__ from the private `_name` fn, so we pin each tool's public name
+# explicitly via name=... — otherwise the tools would register as `_get_funding_rate`.
+# ---------------------------------------------------------------------------
+
+
+@mcp.tool(name="get_funding_rate")
+@functools.wraps(_get_funding_rate)
+def get_funding_rate(symbol: str = "BTC", exchange: str = "binance") -> Dict[str, Any]:
+    return _get_funding_rate(symbol, exchange)
+
+
+@mcp.tool(name="get_funding_rate_history")
+@functools.wraps(_get_funding_rate_history)
+def get_funding_rate_history(
+    symbol: str = "BTC", exchange: str = "binance", hours: int = 24
+) -> Dict[str, Any]:
+    return _get_funding_rate_history(symbol, exchange, hours)
+
+
+@mcp.tool(name="get_open_interest")
+@functools.wraps(_get_open_interest)
+def get_open_interest(symbol: str = "BTC", exchange: str = "binance") -> Dict[str, Any]:
+    return _get_open_interest(symbol, exchange)
+
+
+@mcp.tool(name="get_long_short_ratio")
+@functools.wraps(_get_long_short_ratio)
+def get_long_short_ratio(
+    symbol: str = "BTC", exchange: str = "binance", period: str = "5m"
+) -> Dict[str, Any]:
+    return _get_long_short_ratio(symbol, exchange, period)
+
+
+@mcp.tool(name="get_taker_buy_sell_ratio")
+@functools.wraps(_get_taker_buy_sell_ratio)
+def get_taker_buy_sell_ratio(
+    symbol: str = "BTC", exchange: str = "binance", period: str = "5m"
+) -> Dict[str, Any]:
+    return _get_taker_buy_sell_ratio(symbol, exchange, period)
+
+
+@mcp.tool(name="calculate_liquidation_levels")
+@functools.wraps(_calculate_liquidation_levels)
+def calculate_liquidation_levels(
+    symbol: str = "BTC", exchange: str = "binance", current_price: Optional[float] = None
+) -> Dict[str, Any]:
+    return _calculate_liquidation_levels(symbol, exchange, current_price)
+
+
+@mcp.tool(name="compare_funding_rates")
+@functools.wraps(_compare_funding_rates)
+def compare_funding_rates(
+    symbol: str = "BTC", exchanges: List[str] = None
+) -> Dict[str, Any]:
+    return _compare_funding_rates(symbol, exchanges)
 
 
 if __name__ == "__main__":

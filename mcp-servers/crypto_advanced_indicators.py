@@ -21,6 +21,7 @@ from typing import Dict, List, Any, Optional
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
+import json
 import logging
 
 from validators import validate_symbol, validate_positive_int, validate_timeframe
@@ -28,7 +29,26 @@ from validators import validate_symbol, validate_positive_int, validate_timefram
 logger = logging.getLogger(__name__)
 
 # Initialize MCP server
-mcp = FastMCP("crypto-advanced-indicators")
+
+
+def _json_native(obj):
+    """Ultimo recurso del serializador (fix 2026-07-27, caso real 1 del Salon):
+    numpy.bool_/int64/float64 y arrays rompian la serializacion pydantic de
+    fastmcp (PydanticSerializationError: numpy.bool) y con ello la sesion stdio
+    quedaba inutilizable. item()/tolist() los vuelve tipos nativos; str() cubre
+    cualquier otro tipo exotico. Fail-open deliberado: mejor un string feo que
+    una tool muerta."""
+    if hasattr(obj, "tolist"):
+        return obj.tolist()  # arrays -> list; escalares numpy -> escalar nativo
+    if hasattr(obj, "item"):
+        return obj.item()
+    return str(obj)
+
+
+def _tool_serializer(result) -> str:
+    return json.dumps(result, default=_json_native, ensure_ascii=False)
+
+mcp = FastMCP("crypto-advanced-indicators", tool_serializer=_tool_serializer)
 
 # Reliable exchange
 EXCHANGE = ccxt.binance()
